@@ -48,9 +48,9 @@ shown on the sign-in screen. Change it with `ORBIT_DEMO_PIN` if the team prefers
 | Member | Routes | Status |
 |---|---|---|
 | 1 — Sign in / sign up (Hagar) | `/login`, `/signup`, `/manage-crew` | ✅ done |
-| 2 — Twin View (Omar) | `/` | ✅ merged from `member2-twin-view`, linked to the database |
+| 2 — Twin View (Omar) | `/` | ✅ merged from `member2-twin-view` (incl. Earth-Independent Mode), linked to the database |
 | 3 — Organ pages | `/organ/:organId` (7 organs) | TODO, currently *ComingSoon* |
-| 4 — Check-in + data feed | `/check-in` | TODO: call `submitCheckIn()`; it already saves to the database |
+| 4 — Check-in + data feed (Shahd) | `/check-in` | ✅ merged from `MEMBER4`, saves to the database |
 | 5 — Action Center + Crew Pulse | `/actions`, `/crew` | TODO |
 | 6 — Future Slider + Mission | `/future`, `/mission` | TODO |
 
@@ -136,6 +136,31 @@ merged into this Vite app as follows:
 | signed httpOnly session cookie, 5-try lockout, "only your own twin", hand-over sign-out | rebuilt in `server/session.mjs` + `server/server.mjs` on the shared SQLite database |
 | `accounts-store.ts` (JSON file in `~/.orbit-twin`), `session-gate.tsx`, `auth-client.ts`, Next route handlers | replaced by the crew database, `RequireSession` and `crew-api.ts` (one sign-in system, not two) |
 | `GET /api/twin`, `GET /api/environments` | the same data comes from `buildTwinSnapshot()` / `allEnvironmentEffects()` in `twin.ts`, computed in the app |
+
+## Member 4: Daily Check-in (merged from `MEMBER4`)
+
+Shahd's branch was a full copy of the original Next.js project (plus an unrelated `ent-flow` clinic app, not
+merged). Her actual changes were `check-in-form.tsx` and `sensors.ts`; her design is kept: sensor readings
+arrive automatically and are read-only, only readings the astronaut takes are typed in.
+
+| Field | Source | In the form |
+|---|---|---|
+| Heart rate, SpO₂, sleep, exercise | watch (simulated) | read-only, today's value from the database; missing → **Unknown / no signal** |
+| Blood pressure · temperature · blood sugar | cuff · thermometer · meter | typed in (the watch does not measure these, plan §3) |
+| Grip, near vision, mood | you | typed / tapped |
+
+Changes while porting: watch fields never show the person's normal value when no reading exists (plan §12),
+BP/temperature/glucose are not labelled as watch readings, input sanity checks (e.g. systolic 60–250, top number
+above bottom), the How & Why card uses the browser's `<dialog>`, and saving reports honestly whether it reached
+the crew database or stayed on the tablet. Grip, vision and glucose update the twin but are not columns of the
+`readings` table yet.
+
+## Member 2 update: Earth-Independent Mode
+
+On Mars missions the twin knows about **solar conjunction** (Sun between Earth and Mars, ~2 weeks without
+reliable contact, as in NASA's Nov 11–25 2023 pause). Demo scenario: blackout from mission day 220 for 14 days,
+so day 214 shows a 6-day warning; the Twin View has a demo button to start it now. During the blackout the
+contact chain stays on board and reports are queued. Seriousness never changes.
 
 ## Scientific notes / honest limits
 - The twin compares readings with the person's **own** baseline. Reference ranges (AHA/ACC 2017 BP, AHA resting

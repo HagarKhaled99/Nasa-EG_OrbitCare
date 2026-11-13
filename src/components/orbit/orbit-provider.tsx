@@ -84,8 +84,12 @@ interface OrbitContextValue {
   /** Delete an astronaut from the database. `pin` = their own PIN or the admin PIN. Throws ApiError 403 if refused. */
   removeCrewMember: (astronautId: string, pin: string) => Promise<void>
   setEnvironmentId: (id: EnvironmentId) => void
-  /** Record today's values: the twin updates at once and a MANUAL_CHECKIN row is saved to the database. */
-  submitCheckIn: (values: Overrides) => Promise<void>
+  /**
+   * Record today's values: the twin updates at once and a MANUAL_CHECKIN row is saved to the database.
+   * Resolves to where it was saved: 'database', 'tablet-only' (server unreachable or value not stored in the
+   * readings table, e.g. grip/vision/glucose), so the page can tell the astronaut honestly.
+   */
+  submitCheckIn: (values: Overrides) => Promise<'database' | 'tablet-only'>
   castVote: (targetId: string, seemsLikeThemselves: boolean) => void
   myVoteFor: (targetId: string) => boolean | undefined
   reportsSent: number
@@ -234,7 +238,7 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
   const env = getEnvironment(envId)
 
   const submitCheckIn = useCallback(
-    async (values: Overrides) => {
+    async (values: Overrides): Promise<'database' | 'tablet-only'> => {
       const id = astronaut.id
       setOverrides((prev) => ({ ...prev, [id]: { ...prev[id], ...values } }))
       const row: NewReading = { astronaut_id: id, mission_day: MISSION_DAY, data_origin: 'MANUAL_CHECKIN', sensor_mode: 'manual' }
@@ -246,12 +250,14 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
           any = true
         }
       }
-      if (!any) return
+      if (!any) return 'tablet-only'
       try {
         await saveReading(row)
         await loadReadings(id)
+        return 'database'
       } catch {
-        /* offline: the check-in still shows on this tablet; it is not lost from the screen */
+        // Server unreachable: the check-in still shows on this tablet; it is not lost from the screen.
+        return 'tablet-only'
       }
     },
     [astronaut.id, loadReadings],

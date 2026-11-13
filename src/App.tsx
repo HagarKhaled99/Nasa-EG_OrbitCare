@@ -2,6 +2,7 @@ import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/orbit/app-shell'
 import { OrbitProvider, useOrbit } from '@/components/orbit/orbit-provider'
 import { ComingSoon } from '@/components/orbit/coming-soon'
+import { CheckInPage } from '@/components/orbit/check-in-page'
 import { ManageCrew } from '@/components/orbit/manage-crew'
 import { SignIn } from '@/components/orbit/sign-in'
 import { SignUp } from '@/components/orbit/sign-up'
@@ -37,6 +38,7 @@ export function App() {
           <Route path="/manage-crew" element={<ManageCrew />} />
           <Route element={<RequireSession />}>
             <Route path="/" element={<TwinView />} />
+            <Route path="/check-in" element={<CheckInPage />} />
             {/* Members 3–6: add your routes here, e.g. <Route path="/organ/:organId" element={<OrganPage />} /> */}
             <Route path="*" element={<ComingSoon />} />
           </Route>
