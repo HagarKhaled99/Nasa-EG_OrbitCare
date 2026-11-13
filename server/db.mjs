@@ -72,6 +72,48 @@ export function openDatabase(path = DB_PATH) {
       astronaut_id TEXT,
       detail       TEXT
     );
+
+    -- ---------- Member 5 (Salma): Action Center + Crew Pulse ----------
+    -- Ticked "do this now" steps per alert (alert_key = organ-day-status, step_id = step text or '__ack__').
+    CREATE TABLE IF NOT EXISTS action_step_state (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      astronaut_id TEXT NOT NULL,
+      alert_key    TEXT NOT NULL,
+      step_id      TEXT NOT NULL,
+      completed    INTEGER NOT NULL DEFAULT 0,
+      updated_at   TEXT NOT NULL,
+      UNIQUE (astronaut_id, alert_key, step_id)
+    );
+
+    -- "Notify the onboard medical officer" messages (queued until delivered).
+    CREATE TABLE IF NOT EXISTS medical_notifications (
+      id           TEXT PRIMARY KEY,
+      astronaut_id TEXT NOT NULL,
+      alert_key    TEXT NOT NULL,
+      recipient    TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'queued',
+      created_at   TEXT NOT NULL
+    );
+
+    -- Medical Report Packets (queued for the next comms window to Earth).
+    CREATE TABLE IF NOT EXISTS medical_reports (
+      id           TEXT PRIMARY KEY,
+      astronaut_id TEXT NOT NULL,
+      report_json  TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'queued',
+      created_at   TEXT NOT NULL
+    );
+
+    -- Daily Crew Pulse: "Does <crewmate> seem like their usual self today?" Private: only counts are shared.
+    CREATE TABLE IF NOT EXISTS crew_pulse_votes (
+      id                    TEXT PRIMARY KEY,
+      mission_day           INTEGER NOT NULL,
+      from_id               TEXT NOT NULL,
+      target_id             TEXT NOT NULL,
+      seems_like_themselves INTEGER NOT NULL,
+      created_at            TEXT NOT NULL,
+      UNIQUE (mission_day, from_id, target_id)
+    );
   `)
   // Upgrade older databases: add columns that were introduced later (keeps existing rows).
   const readingColumns = db.prepare('PRAGMA table_info(readings)').all().map((c) => c.name)

@@ -12,6 +12,13 @@
 //                                         crew medical officer. 401 / 403 otherwise
 //   POST   /api/readings               → save one of YOUR readings (check-in / watch feed). 201 / 400 / 401 / 403
 //
+//   Member 5 (Salma) – Action Center + Crew Pulse. All need sign-in; you can only act as yourself:
+//   GET/POST /api/action-steps          → ticked "do this now" steps { alertKey, stepId, completed }
+//   GET/POST /api/medical-notifications → notify the onboard medical officer { alertKey, recipient }
+//   GET/POST /api/medical-reports       → Medical Report Packets { report } (queued for Earth)
+//   GET      /api/crew-pulse?missionDay= → { mine, aboutMe: { flags, total }, answered: [ids] }. Never who flagged whom
+//   POST     /api/crew-pulse            → { missionDay, targetId, seemsLikeThemselves } (from = you)
+//
 // Sessions: signed httpOnly cookie (server/session.mjs, design by Member 2). Everyone signs in here.
 //
 // Run alone:  node server/server.mjs      (port 4000, or PORT=xxxx)
@@ -44,6 +51,22 @@ const SAMPLE_CREW = [
 const SAMPLE_CREW_IDS = SAMPLE_CREW.map((c) => c.id)
 const DEMO_PIN = process.env.ORBIT_DEMO_PIN ?? '2026'
 const CMO_ROLE = 'Crew Medical Officer'
+/** Mission day of the demo data; the demo Crew Pulse votes below are for this day. */
+const DEMO_MISSION_DAY = 214
+/** Crew Pulse votes already cast today in the demo (same as crewVotes in src/lib/orbit/crew.ts). */
+const DEMO_PULSE_VOTES = [
+  ['ahmed', 'sara', false], ['lena', 'sara', false], ['omar', 'sara', true],
+  ['sara', 'ahmed', true], ['lena', 'ahmed', true], ['omar', 'ahmed', true],
+  ['sara', 'lena', true], ['ahmed', 'lena', false], ['omar', 'lena', true],
+  ['sara', 'omar', true], ['ahmed', 'omar', true], ['lena', 'omar', true],
+]
+
+function requiredText(value, field, max = 200) {
+  if (typeof value !== 'string' || !value.trim() || value.length > max) {
+    throw new HttpError(400, `${field}: required text (max ${max} characters)`)
+  }
+  return value.trim()
+}
 /** Plausible ranges for incoming readings (wider than baseline limits: these may be abnormal, just not impossible). */
 const READING_LIMITS = {
   heart_rate_bpm: [25, 220],
@@ -195,6 +218,31 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
       ON CONFLICT(astronaut_id) DO UPDATE SET failed = excluded.failed, locked_until = excluded.locked_until`),
     clearAttempts: db.prepare('DELETE FROM pin_attempts WHERE astronaut_id = ?'),
     audit: db.prepare('INSERT INTO audit_log (at, action, astronaut_id, detail) VALUES (?, ?, ?, ?)'),
+
+    // Member 5 (Salma): Action Center
+    listSteps: db.prepare('SELECT alert_key, step_id, completed, updated_at FROM action_step_state WHERE astronaut_id = ?'),
+    saveStep: db.prepare(`INSERT INTO action_step_state (astronaut_id, alert_key, step_id, completed, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(astronaut_id, alert_key, step_id) DO UPDATE SET completed = excluded.completed, updated_at = excluded.updated_at`),
+    listNotifications: db.prepare('SELECT * FROM medical_notifications WHERE astronaut_id = ? ORDER BY created_at DESC'),
+    listAllNotifications: db.prepare('SELECT * FROM medical_notifications ORDER BY created_at DESC LIMIT 200'),
+    addNotification: db.prepare(`INSERT INTO medical_notifications (id, astronaut_id, alert_key, recipient, status, created_at)
+      VALUES (?, ?, ?, ?, 'queued', ?)`),
+    listReports: db.prepare('SELECT * FROM medical_reports WHERE astronaut_id = ? ORDER BY created_at DESC'),
+    listAllReports: db.prepare('SELECT * FROM medical_reports ORDER BY created_at DESC LIMIT 200'),
+    addReport: db.prepare(`INSERT INTO medical_reports (id, astronaut_id, report_json, status, created_at) VALUES (?, ?, ?, 'queued', ?)`),
+    removeMemberFiveData: db.prepare('DELETE FROM action_step_state WHERE astronaut_id = ?'),
+    // Member 5 (Salma): Crew Pulse
+    votesByMe: db.prepare('SELECT target_id, seems_like_themselves FROM crew_pulse_votes WHERE mission_day = ? AND from_id = ?'),
+    votesAboutMe: db.prepare(
+      'SELECT COUNT(*) AS total, SUM(seems_like_themselves = 0) AS flags FROM crew_pulse_votes WHERE mission_day = ? AND target_id = ?',
+    ),
+    voters: db.prepare('SELECT DISTINCT from_id FROM crew_pulse_votes WHERE mission_day = ?'),
+    countVotes: db.prepare('SELECT COUNT(*) AS n FROM crew_pulse_votes'),
+    saveVote: db.prepare(`INSERT INTO crew_pulse_votes (id, mission_day, from_id, target_id, seems_like_themselves, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(mission_day, from_id, target_id)
+      DO UPDATE SET seems_like_themselves = excluded.seems_like_themselves, created_at = excluded.created_at`),
   }
   const audit = (action, astronautId, detail = null) => q.audit.run(new Date().toISOString(), action, astronautId, detail)
 
@@ -223,6 +271,13 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
   function startSession(astronautId) {
     const { token, session } = sessions.create(astronautId)
     return { session, cookie: sessionCookie(token) }
+  }
+
+  // First start: the demo Crew Pulse votes for today, so the page has data (same as crew.ts).
+  if (q.countVotes.get().n === 0) {
+    for (const [from, target, seems] of DEMO_PULSE_VOTES) {
+      q.saveVote.run(randomUUID(), DEMO_MISSION_DAY, from, target, seems ? 1 : 0, new Date().toISOString())
+    }
   }
 
   const routes = {
@@ -359,6 +414,101 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
       return { status: 204, body: null }
     },
 
+    // ---------- Member 5 (Salma): Action Center ----------
+
+    'GET /api/action-steps': ({ req, query }) => {
+      const me = requireSession(req)
+      const alertKey = query.get('alertKey')
+      const rows = q.listSteps.all(me.astronautId).filter((r) => !alertKey || r.alert_key === alertKey)
+      return { status: 200, body: rows.map((r) => ({ ...r, completed: Boolean(r.completed) })) }
+    },
+
+    'POST /api/action-steps': ({ req, body }) => {
+      const me = requireSession(req)
+      const alertKey = requiredText(body?.alertKey, 'alertKey', 100)
+      const stepId = requiredText(body?.stepId, 'stepId', 300)
+      if (typeof body?.completed !== 'boolean') throw new HttpError(400, 'completed must be true or false')
+      q.saveStep.run(me.astronautId, alertKey, stepId, body.completed ? 1 : 0, new Date().toISOString())
+      if (stepId === '__ack__' && body.completed) audit('alert-acknowledged', me.astronautId, alertKey)
+      return { status: 200, body: { ok: true } }
+    },
+
+    // ---------- Member 5 (Salma): notify the onboard medical officer ----------
+
+    'GET /api/medical-notifications': ({ req }) => {
+      const me = requireSession(req)
+      // The crew medical officer receives these, so they see everyone's; others see their own.
+      const rows = me.role === CMO_ROLE ? q.listAllNotifications.all() : q.listNotifications.all(me.astronautId)
+      return { status: 200, body: rows }
+    },
+
+    'POST /api/medical-notifications': ({ req, body }) => {
+      const me = requireSession(req)
+      const alertKey = requiredText(body?.alertKey, 'alertKey', 100)
+      const recipient = requiredText(body?.recipient ?? CMO_ROLE, 'recipient', 120)
+      const id = randomUUID()
+      const createdAt = new Date().toISOString()
+      q.addNotification.run(id, me.astronautId, alertKey, recipient, createdAt)
+      audit('medical-notification-queued', me.astronautId, `${alertKey} → ${recipient}`)
+      return { status: 201, body: { id, astronaut_id: me.astronautId, alert_key: alertKey, recipient, status: 'queued', created_at: createdAt } }
+    },
+
+    // ---------- Member 5 (Salma): Medical Report Packets ----------
+
+    'GET /api/medical-reports': ({ req }) => {
+      const me = requireSession(req)
+      const rows = me.role === CMO_ROLE ? q.listAllReports.all() : q.listReports.all(me.astronautId)
+      return { status: 200, body: rows.map(({ report_json, ...row }) => ({ ...row, report: JSON.parse(report_json) })) }
+    },
+
+    'POST /api/medical-reports': ({ req, body }) => {
+      const me = requireSession(req)
+      if (!body?.report || typeof body.report !== 'object' || Array.isArray(body.report)) {
+        throw new HttpError(400, 'report must be an object')
+      }
+      const id = randomUUID()
+      const createdAt = new Date().toISOString()
+      q.addReport.run(id, me.astronautId, JSON.stringify(body.report), createdAt)
+      audit('medical-report-queued', me.astronautId, id)
+      return { status: 201, body: { id, astronaut_id: me.astronautId, report: body.report, status: 'queued', created_at: createdAt } }
+    },
+
+    // ---------- Member 5 (Salma): Crew Pulse ----------
+
+    'GET /api/crew-pulse': ({ req, query }) => {
+      const me = requireSession(req)
+      const missionDay = Number(query.get('missionDay'))
+      if (!Number.isInteger(missionDay) || missionDay < 0) throw new HttpError(400, 'missionDay must be a non-negative integer')
+      const about = q.votesAboutMe.get(missionDay, me.astronautId)
+      return {
+        status: 200,
+        body: {
+          missionDay,
+          mine: q.votesByMe.all(missionDay, me.astronautId).map((v) => ({
+            targetId: v.target_id,
+            seemsLikeThemselves: Boolean(v.seems_like_themselves),
+          })),
+          // Privacy: only the combined count about you, never who flagged you.
+          aboutMe: { flags: about.flags ?? 0, total: about.total ?? 0 },
+          // Participation only (who answered today), never the answers.
+          answered: q.voters.all(missionDay).map((v) => v.from_id),
+        },
+      }
+    },
+
+    'POST /api/crew-pulse': ({ req, body }) => {
+      const me = requireSession(req)
+      const missionDay = body?.missionDay
+      if (!Number.isInteger(missionDay) || missionDay < 0) throw new HttpError(400, 'missionDay must be a non-negative integer')
+      const targetId = requiredText(body?.targetId, 'targetId', 100)
+      if (!account(targetId)) throw new HttpError(404, 'Unknown crewmate')
+      if (targetId === me.astronautId) throw new HttpError(400, 'You cannot answer about yourself')
+      if (typeof body?.seemsLikeThemselves !== 'boolean') throw new HttpError(400, 'seemsLikeThemselves must be true or false')
+      q.saveVote.run(randomUUID(), missionDay, me.astronautId, targetId, body.seemsLikeThemselves ? 1 : 0, new Date().toISOString())
+      audit('crew-pulse-vote', me.astronautId, `day ${missionDay}`) // not who or what: the answer stays private
+      return { status: 200, body: { ok: true } }
+    },
+
     'DELETE /api/astronauts/:id': ({ params, body, req }) => {
       const row = q.get.get(params.id)
       if (!row) throw new HttpError(404, 'Astronaut not found')
@@ -368,6 +518,7 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
       q.remove.run(row.id)
       q.removeReadings.run(row.id)
       q.clearAttempts.run(row.id)
+      q.removeMemberFiveData.run(row.id)
       audit('delete', row.id, `${row.name} (by ${byOwner ? 'owner' : 'admin'})`)
       // Removing the person who is signed in on this tablet ends their session.
       const me = sessions.read(readCookie(req))
