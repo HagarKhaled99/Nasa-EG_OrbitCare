@@ -21,11 +21,13 @@ import {
   ExternalLink,
   Gauge,
   Globe2,
+  Inbox,
   Lock,
   LogOut,
   Radiation,
   Rocket,
   Siren,
+  Sun,
   Thermometer,
   User,
   Users,
@@ -36,12 +38,14 @@ import { ButtonLink } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { formatValue } from '@/lib/orbit/status-style'
 import {
+  CONJUNCTION_SOURCES,
   DATA_SOURCES,
   HAZARDS,
   REFERENCES,
   buildTwinSnapshot,
   type DataSourceId,
   type TwinIndicatorSummary,
+  type CommsWindow,
   type TwinOrganCard,
   type TwinSnapshot,
   type TwinStatus,
@@ -83,7 +87,10 @@ const TWIN_CSS = `
 @keyframes twin-ping { 0% { transform: scale(1); opacity: .7 } 100% { transform: scale(2.6); opacity: 0 } }
 .twin-signal { animation: twin-signal var(--twin-signal, 3s) linear infinite; }
 @keyframes twin-signal { 0% { left: 0%; opacity: 0 } 8% { opacity: 1 } 92% { opacity: 1 } 100% { left: 100%; opacity: 0 } }
+.twin-blocked { animation: twin-blocked 1.4s ease-in-out infinite; }
+@keyframes twin-blocked { 50% { opacity: .35 } }
 @media (prefers-reduced-motion: reduce) {
+  .twin-blocked { animation: none }
   .twin-sweep { display: none }
   .twin-blink, .twin-ping, .twin-signal { animation: none }
 }
@@ -175,10 +182,21 @@ function valueText(lead: TwinIndicatorSummary) {
 export function TwinView() {
   const { astronaut, env, organs, indicators, readiness, streak, checkedInToday } = useOrbit()
   const now = useClock()
+  // Demo button for Earth-Independent Mode: pretend the Mars blackout starts today.
+  const [blackoutDemo, setBlackoutDemo] = useState(false)
 
   const twin = useMemo(
-    () => buildTwinSnapshot({ astronaut, env, indicators, organs, readiness, checkedInToday }),
-    [astronaut, env, indicators, organs, readiness, checkedInToday],
+    () =>
+      buildTwinSnapshot({
+        astronaut,
+        env,
+        indicators,
+        organs,
+        readiness,
+        checkedInToday,
+        forceBlackout: blackoutDemo,
+      }),
+    [astronaut, env, indicators, organs, readiness, checkedInToday, blackoutDemo],
   )
 
   // When the twin was last recalculated from shared state (a check-in or env change updates it).
@@ -209,7 +227,7 @@ export function TwinView() {
       </div>
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-        <CommsPanel twin={twin} />
+        <CommsPanel twin={twin} now={now} blackoutDemo={blackoutDemo} onBlackoutDemo={setBlackoutDemo} />
         <RidgePanel active={twin.activeHazards} />
       </div>
 
@@ -725,10 +743,22 @@ function Sparkline({ lead, status }: { lead: TwinIndicatorSummary; status: TwinS
 // Comms: distance from Earth and who you contact
 // ---------------------------------------------------------------------------
 
-function CommsPanel({ twin }: { twin: TwinSnapshot }) {
+function CommsPanel({
+  twin,
+  now,
+  blackoutDemo,
+  onBlackoutDemo,
+}: {
+  twin: TwinSnapshot
+  now: Date | null
+  blackoutDemo: boolean
+  onBlackoutDemo: (on: boolean) => void
+}) {
   const { setEnvironmentId } = useOrbit()
   const m = twin.mission
   const fx = m.effects
+  const comms = twin.comms
+  const blackout = comms.state === 'blackout'
   // Animation length grows with distance (log scale), so Mars visibly takes longer than the ISS.
   const signalSeconds = Math.min(7, 1.2 + Math.log10(1 + m.earthDelaySeconds) * 1.7)
   const place = m.environmentName.split(' · ')[0]
@@ -740,6 +770,8 @@ function CommsPanel({ twin }: { twin: TwinSnapshot }) {
       <h2 id="comms-title" className="mt-2 text-xl leading-snug font-semibold tracking-[-0.01em] text-balance sm:text-2xl">
         Your flight surgeon is {m.earthDelayLabel} away. <span className="text-primary">Your twin is right here.</span>
       </h2>
+
+      <EarthLink comms={comms} missionDay={m.missionDay} blackoutDemo={blackoutDemo} onBlackoutDemo={onBlackoutDemo} />
 
       <div className="mt-4" role="group" aria-label="Where are you?">
         <p className="mb-2 text-xs text-muted-foreground">Where are you? Change it to see your numbers update.</p>
@@ -773,11 +805,20 @@ function CommsPanel({ twin }: { twin: TwinSnapshot }) {
         </span>
         <div className="relative h-6 flex-1">
           <div className="absolute inset-x-0 top-1/2 h-px bg-[repeating-linear-gradient(90deg,var(--border)_0_6px,transparent_6px_10px)]" />
-          <span
-            key={m.environmentId}
-            className="twin-signal absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow-[0_0_0_4px_color-mix(in_oklch,var(--primary)_20%,transparent)]"
-            style={{ ['--twin-signal' as string]: `${signalSeconds}s` }}
-          />
+          {blackout ? (
+            <>
+              <span className="twin-blocked absolute top-1/2 left-[38%] size-2.5 -translate-y-1/2 rounded-full bg-muted-foreground" />
+              <span className="absolute top-1/2 left-1/2 flex size-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-status-watch/20">
+                <Sun className="size-4 text-status-watch" />
+              </span>
+            </>
+          ) : (
+            <span
+              key={m.environmentId}
+              className="twin-signal absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow-[0_0_0_4px_color-mix(in_oklch,var(--primary)_20%,transparent)]"
+              style={{ ['--twin-signal' as string]: `${signalSeconds}s` }}
+            />
+          )}
         </div>
         <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] font-semibold">
           Earth
@@ -785,8 +826,10 @@ function CommsPanel({ twin }: { twin: TwinSnapshot }) {
         </span>
       </div>
       <p className="mt-1 text-center font-mono text-[11px] text-muted-foreground">
-        round trip {m.roundTripLabel} · {m.environmentName}
+        {blackout ? 'signal scrambled by the Sun' : `round trip ${m.roundTripLabel}`} · {m.environmentName}
       </p>
+
+      <TimeGap comms={comms} now={now} delaySeconds={m.earthDelaySeconds} />
 
       <div className="mt-5">
         <p className="text-xs text-muted-foreground">If you need help right now, the chain is:</p>
@@ -806,8 +849,8 @@ function CommsPanel({ twin }: { twin: TwinSnapshot }) {
           ))}
         </ol>
         <p className="mt-2 text-xs text-muted-foreground">
-          Distance changes <span className="font-medium text-foreground">who</span> you contact. It never changes how
-          serious a reading is.
+          Distance and blackouts change <span className="font-medium text-foreground">who</span> you contact. They
+          never change how serious a reading is.
         </p>
       </div>
 
@@ -829,6 +872,162 @@ function CommsPanel({ twin }: { twin: TwinSnapshot }) {
         Illustrative, research-informed estimates for your exercise level, not predictions. Radiation: {fx.source}.
       </p>
     </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Earth-Independent Mode: comms timeline, blackout state, "what Earth sees"
+// ---------------------------------------------------------------------------
+
+function EarthLink({
+  comms,
+  missionDay,
+  blackoutDemo,
+  onBlackoutDemo,
+}: {
+  comms: CommsWindow
+  missionDay: number
+  blackoutDemo: boolean
+  onBlackoutDemo: (on: boolean) => void
+}) {
+  const tone =
+    comms.state === 'blackout'
+      ? 'border-foreground bg-foreground text-background'
+      : comms.state === 'pre-blackout'
+        ? 'border-status-watch/40 bg-status-watch/10'
+        : 'border-status-ok/30 bg-status-ok/10'
+  return (
+    <div className="mt-4 flex flex-col gap-3">
+      <div className={cn('rounded-2xl border p-4 transition-colors', tone)} role="status" aria-live="polite">
+        <p className="flex items-center gap-2 font-mono text-[10.5px] font-semibold tracking-[0.16em] uppercase opacity-80">
+          {comms.state === 'blackout' ? (
+            <Sun className="size-3.5" aria-hidden />
+          ) : (
+            <span aria-hidden className={cn('size-2 rounded-full', comms.state === 'pre-blackout' ? 'bg-status-watch' : 'bg-status-ok')} />
+          )}
+          {comms.state === 'blackout'
+            ? 'Earth-independent mode'
+            : comms.state === 'pre-blackout'
+              ? 'Blackout coming'
+              : 'Earth link'}
+        </p>
+        <p className="mt-1 text-base font-semibold">{comms.title}</p>
+        <p className={cn('mt-0.5 text-sm', comms.state === 'blackout' ? 'opacity-85' : 'text-muted-foreground')}>
+          {comms.detail}
+        </p>
+        {comms.prepAdvice && (
+          <p className="mt-2 rounded-xl bg-card px-3 py-2 text-sm text-foreground">
+            <span className="font-semibold">Before it starts: </span>
+            {comms.prepAdvice}
+          </p>
+        )}
+        {comms.state === 'blackout' && (
+          <p className="mt-2 flex items-center gap-1.5 text-xs opacity-85">
+            <Inbox className="size-3.5" aria-hidden />
+            Reports are saved on board and sent automatically on day {comms.blackoutEndDay}.
+          </p>
+        )}
+      </div>
+
+      {comms.hasConjunction && comms.blackoutStartDay !== null && comms.blackoutEndDay !== null && (
+        <CommsTimeline
+          today={missionDay}
+          start={comms.blackoutStartDay}
+          end={comms.blackoutEndDay}
+          blackout={comms.state === 'blackout'}
+        />
+      )}
+
+      {comms.hasConjunction ? (
+        <button
+          type="button"
+          onClick={() => onBlackoutDemo(!blackoutDemo)}
+          aria-pressed={blackoutDemo}
+          className="inline-flex items-center gap-2 self-start rounded-full border border-border bg-secondary/60 px-3 py-1.5 text-xs font-medium hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <Sun className="size-3.5 text-status-watch" aria-hidden />
+          {blackoutDemo ? 'End the blackout demo' : 'Demo: start the blackout now'}
+        </button>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Long blackouts only happen on Mars missions, when the Sun passes between Earth and Mars (about every 2
+          years). Pick a Mars place below to see Earth-independent mode.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** Next 30 mission days: when Earth can be reached, and the blackout window. */
+function CommsTimeline({ today, start, end, blackout }: { today: number; start: number; end: number; blackout: boolean }) {
+  const span = 30
+  const pos = (day: number) => `${Math.max(0, Math.min(100, ((day - today) / span) * 100))}%`
+  const width = `${Math.max(0, Math.min(100, ((end - Math.max(start, today)) / span) * 100))}%`
+  return (
+    <div>
+      <div
+        className="relative h-7 overflow-hidden rounded-full bg-status-ok/15"
+        role="img"
+        aria-label={`Earth reachable until day ${start}, no contact from day ${start} to day ${end}`}
+      >
+        <div
+          className="absolute inset-y-0 bg-[repeating-linear-gradient(135deg,color-mix(in_oklch,var(--status-watch)_45%,transparent)_0_6px,color-mix(in_oklch,var(--status-watch)_20%,transparent)_6px_12px)]"
+          style={{ left: pos(Math.max(start, today)), width }}
+        />
+        <span className="absolute inset-y-0 left-0 w-0.5 bg-foreground" aria-hidden />
+        <span
+          className="absolute top-1/2 -translate-y-1/2 pl-2 font-mono text-[10px] font-semibold whitespace-nowrap"
+          style={{ left: pos(Math.max(start, today)) }}
+        >
+          {blackout ? `Sun scrambles signal · until day ${end}` : `Sun scrambles signal · day ${start} to ${end}`}
+        </span>
+      </div>
+      <div className="relative mt-1 h-4 font-mono text-[10px] text-muted-foreground">
+        <span className="absolute left-0">Today · day {today}</span>
+        <span className="absolute right-0">
+          {blackout ? `Earth back on day ${end}` : 'Green: Earth in contact'}
+        </span>
+      </div>
+      <p className="mt-1 text-[10.5px] leading-relaxed text-muted-foreground">
+        Demo dates for this mission. NASA: it happens about every 2 years, NASA pauses commands for about 2 weeks
+        (Nov 11 to 25, 2023), and for about 2 days there is no signal at all.{' '}
+        {CONJUNCTION_SOURCES.map((src, i) => (
+          <a
+            key={src.url}
+            href={src.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            {i === 0 ? 'Source' : 'NASA 2023'}
+            {i === 0 ? ', ' : ''}
+          </a>
+        ))}
+      </p>
+    </div>
+  )
+}
+
+/** You see your data now; Earth sees it later (or not at all in a blackout). */
+function TimeGap({ comms, now, delaySeconds }: { comms: CommsWindow; now: Date | null; delaySeconds: number }) {
+  const fmt = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const earthTime = now ? new Date(now.getTime() - delaySeconds * 1000) : null
+  const blackout = comms.state === 'blackout'
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border">
+      <div className="bg-card px-3 py-2.5">
+        <p className="text-[11px] text-muted-foreground">Your twin sees</p>
+        <p className="mt-0.5 font-mono text-[13px] font-semibold tabular-nums">{now ? fmt(now) : '—'}</p>
+        <p className="text-[10.5px] text-status-ok">live, on board</p>
+      </div>
+      <div className={cn('px-3 py-2.5', blackout ? 'bg-muted' : 'bg-card')}>
+        <p className="text-[11px] text-muted-foreground">Flight surgeon on Earth sees</p>
+        <p className="mt-0.5 font-mono text-[13px] font-semibold tabular-nums">
+          {blackout ? 'Nothing reliable' : earthTime ? fmt(earthTime) : '—'}
+        </p>
+        <p className={cn('text-[10.5px]', blackout ? 'text-status-watch' : 'text-muted-foreground')}>{comms.earthSees}</p>
+      </div>
+    </div>
   )
 }
 

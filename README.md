@@ -148,4 +148,5 @@ merged into this Vite app as follows:
 
 ## References
 Project plan §13: NASA HRP hazards, risks and ongoing research; CSA radiation monitoring (26 Feb 2026); CSA
-science in space; NASA Standard Measures; NASA OSDR.
+science in space; NASA Standard Measures; NASA OSDR. Mars solar conjunction (Earth-Independent Mode, Member 2):
+NASA "What is Mars solar conjunction?" and NASA JPL "Mars fleet lies low" (Nov 11–25, 2023).
