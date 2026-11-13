@@ -97,6 +97,15 @@ export async function signOutSession(): Promise<void> {
   await request<unknown>('POST', '/auth/sign-out')
 }
 
+/** Forgotten PIN: set a new one with the admin PIN (crew medical officer). Also lifts a lockout. */
+export async function resetAstronautPin(astronautId: string, adminPin: string, newPin: string): Promise<void> {
+  const { status, data } = await request<unknown>('POST', `/astronauts/${encodeURIComponent(astronautId)}/reset-pin`, {
+    adminPin,
+    newPin,
+  })
+  if (status !== 204) fail(status, data)
+}
+
 export async function deleteAstronaut(astronautId: string, pin: string): Promise<void> {
   const { status, data } = await request<unknown>('DELETE', `/astronauts/${encodeURIComponent(astronautId)}`, { pin })
   if (status !== 204) fail(status, data)

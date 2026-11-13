@@ -85,6 +85,7 @@ Measured indicators: `heartRate`, `spo2`, `systolic`, `diastolic`, `glucose`, `t
 | `GET /api/auth/session` · `POST /api/auth/sign-out` | who is signed in · end the session |
 | `GET /api/astronauts` · `POST /api/astronauts` | list · sign-up (validated; signs the new astronaut in) |
 | `DELETE /api/astronauts/:id` | `{ pin }`: their own PIN or the admin PIN. Also deletes their readings |
+| `POST /api/astronauts/:id/reset-pin` | `{ adminPin, newPin }`: forgotten PIN (stored PINs cannot be read). Also lifts a lockout |
 | `GET /api/readings?astronautId=` | your own readings (crew medical officer: anyone's). 401 / 403 otherwise |
 | `POST /api/readings` | add a reading to **your own** twin (`MANUAL_CHECKIN` or `SIMULATED_WATCH`) |
 

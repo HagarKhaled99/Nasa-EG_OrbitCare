@@ -4,6 +4,7 @@
 //   GET    /api/astronauts             → list of signed-up astronauts (public fields only)
 //   POST   /api/astronauts             → create (sign-up) + session cookie. 201 / 400 / 409
 //   DELETE /api/astronauts/:id         → body { pin } (that astronaut's PIN or the admin PIN). 204 / 403 / 404
+//   POST   /api/astronauts/:id/reset-pin → body { adminPin, newPin }: forgotten PIN. 204 / 400 / 403 / 404
 //   POST   /api/auth/sign-in           → { astronautId, pin } → 200 + session cookie | 401 wrong-pin | 423 locked
 //   GET    /api/auth/session           → { session } for the cookie, or 401
 //   POST   /api/auth/sign-out          → clears the cookie. 204
@@ -169,6 +170,7 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
        baseline_json, baseline_source_json, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
     remove: db.prepare('DELETE FROM astronauts WHERE id = ?'),
+    setPin: db.prepare('UPDATE astronauts SET pin_hash = ?, pin_salt = ? WHERE id = ?'),
     removeReadings: db.prepare('DELETE FROM readings WHERE astronaut_id = ?'),
     count: db.prepare('SELECT COUNT(*) AS n FROM astronauts'),
     attempts: db.prepare('SELECT failed, locked_until FROM pin_attempts WHERE astronaut_id = ?'),
@@ -315,6 +317,24 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
       return { status: 201, body: q.readingById.get(info.lastInsertRowid) }
     },
 
+    'POST /api/astronauts/:id/reset-pin': ({ params, body }) => {
+      const row = q.get.get(params.id)
+      if (!row) throw new HttpError(404, 'Astronaut not found')
+      // A forgotten PIN can only be replaced with the admin PIN held by the crew medical officer.
+      if (typeof body?.adminPin !== 'string' || body.adminPin !== ADMIN_PIN) {
+        audit('reset-pin-refused', row.id)
+        throw new HttpError(403, 'Admin PIN not accepted.')
+      }
+      const newPin = body?.newPin
+      if (typeof newPin !== 'string' || !/^\d{4}$/.test(newPin)) throw new HttpError(400, 'The new PIN must be exactly 4 digits.')
+      if (isWeakPin(newPin)) throw new HttpError(400, 'Too easy to guess. Avoid repeated or sequential digits.')
+      const salt = randomBytes(16).toString('hex')
+      q.setPin.run(hashPin(newPin, salt), salt, row.id)
+      q.clearAttempts.run(row.id) // also lifts a lockout
+      audit('reset-pin', row.id, `${row.name} (by admin)`)
+      return { status: 204, body: null }
+    },
+
     'DELETE /api/astronauts/:id': ({ params, body, req }) => {
       const row = q.get.get(params.id)
       if (!row) throw new HttpError(404, 'Astronaut not found')
@@ -341,6 +361,11 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
     if (del && req.method === 'DELETE') {
       key = 'DELETE /api/astronauts/:id'
       params.id = del[1]
+    }
+    const reset = url.pathname.match(/^\/api\/astronauts\/([\w-]+)\/reset-pin$/)
+    if (reset && req.method === 'POST') {
+      key = 'POST /api/astronauts/:id/reset-pin'
+      params.id = reset[1]
     }
     const route = routes[key]
     if (!route) return send(res, 404, { error: 'Not found' })
