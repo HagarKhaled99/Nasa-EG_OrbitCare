@@ -180,7 +180,7 @@ function valueText(lead: TwinIndicatorSummary) {
 // ---------------------------------------------------------------------------
 
 export function TwinView() {
-  const { astronaut, env, organs, indicators, readiness, streak, checkedInToday } = useOrbit()
+  const { astronaut, env, organs, indicators, readiness, streak, checkedInToday, symptomsToday } = useOrbit()
   const now = useClock()
   // Demo button for Earth-Independent Mode: pretend the Mars blackout starts today.
   const [blackoutDemo, setBlackoutDemo] = useState(false)
@@ -195,8 +195,9 @@ export function TwinView() {
         readiness,
         checkedInToday,
         forceBlackout: blackoutDemo,
+        symptoms: symptomsToday,
       }),
-    [astronaut, env, indicators, organs, readiness, checkedInToday, blackoutDemo],
+    [astronaut, env, indicators, organs, readiness, checkedInToday, blackoutDemo, symptomsToday],
   )
 
   // When the twin was last recalculated from shared state (a check-in or env change updates it).

@@ -59,6 +59,23 @@ const READING_LIMITS = {
 const READING_ORIGINS = ['SIMULATED_WATCH', 'MANUAL_CHECKIN']
 const SENSOR_MODES = ['rest', 'motion', 'manual']
 const QUALITIES = ['good', 'poor', 'no-signal']
+/** Keep in sync with src/lib/orbit/symptoms.ts */
+const SYMPTOM_IDS = [
+  'chest-pain', 'breathless', 'fainting', 'confusion', 'vision-loss', 'headache', 'dizzy', 'nausea',
+  'blurred-vision', 'congestion', 'feverish', 'back-pain', 'muscle-weakness', 'poor-sleep',
+]
+
+/** Database row → API JSON (symptoms stored as JSON text, returned as an array). */
+function readingOut(row) {
+  if (!row) return row
+  let symptoms = null
+  try {
+    symptoms = row.symptoms ? JSON.parse(row.symptoms) : null
+  } catch {
+    symptoms = null
+  }
+  return { ...row, symptoms }
+}
 const BASELINE_LIMITS = {
   heartRate: [35, 120],
   spo2: [85, 100],
@@ -285,7 +302,7 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
       if (id !== me.astronautId && me.role !== CMO_ROLE) {
         throw new HttpError(403, 'You can only open your own readings.')
       }
-      return { status: 200, body: q.readings.all(id) }
+      return { status: 200, body: q.readings.all(id).map(readingOut) }
     },
 
     'POST /api/readings': ({ body, req }) => {
@@ -305,16 +322,23 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
         measured++
         if (typeof v !== 'number' || !Number.isFinite(v) || v < lo || v > hi) errors.push(`${key}: ${lo}–${hi}`)
       }
-      if (measured === 0) errors.push('at least one measurement is required')
+      const symptoms = body?.symptoms ?? null
+      if (symptoms !== null) {
+        if (!Array.isArray(symptoms) || symptoms.length > SYMPTOM_IDS.length || !symptoms.every((x) => SYMPTOM_IDS.includes(x))) {
+          errors.push('symptoms: array of known symptom ids')
+        } else if (symptoms.length > 0) measured++
+      }
+      if (measured === 0) errors.push('at least one measurement or symptom is required')
       if (errors.length) throw new HttpError(400, 'Invalid reading', { errors })
       const record = {
         ...Object.fromEntries(READING_COLUMNS.map((c) => [c, body[c] ?? null])),
         astronaut_id: id,
         timestamp_utc: typeof body.timestamp_utc === 'string' ? body.timestamp_utc : new Date().toISOString(),
         note: typeof body.note === 'string' ? body.note.slice(0, 280) : null,
+        symptoms: Array.isArray(symptoms) && symptoms.length > 0 ? JSON.stringify([...new Set(symptoms)]) : null,
       }
       const info = q.insertReading.run(...READING_COLUMNS.map((c) => record[c]))
-      return { status: 201, body: q.readingById.get(info.lastInsertRowid) }
+      return { status: 201, body: readingOut(q.readingById.get(info.lastInsertRowid)) }
     },
 
     'POST /api/astronauts/:id/reset-pin': ({ params, body }) => {

@@ -145,9 +145,14 @@ arrive automatically and are read-only, only readings the astronaut takes are ty
 
 | Field | Source | In the form |
 |---|---|---|
-| Heart rate, SpO₂, sleep, exercise | watch (simulated) | read-only, today's value from the database; missing → **Unknown / no signal** |
+| Heart rate, SpO₂ | watch, **live every 5 s** (`src/lib/orbit/sensor-adapter.ts`) | read-only; packet time + signal quality; "wrist moving" packets are shown but not used; no good packet for 30 s → **Stale**; missing → **Unknown / no signal** |
+| Sleep, exercise | watch (daily summary) | read-only, today's value from the database |
+| Radiation | personal dosimeter (separate sensor) | read-only: today's dose + mission total (% of the 600 mSv limit) |
+| Symptoms | you | checklist (`src/lib/orbit/symptoms.ts`); **urgent** ones (chest pain, breathless at rest, fainting, confusion, sudden vision loss) raise **Act** on that body system even when the numbers look normal (plan §7, demo criteria); others raise Watch. Stored in `readings.symptoms` |
 | Blood pressure · temperature · blood sugar | cuff · thermometer · meter | typed in (the watch does not measure these, plan §3) |
 | Grip, near vision, mood | you | typed / tapped |
+
+Saving stores a `MANUAL_CHECKIN` row (manual values, mood, symptoms) and a `SIMULATED_WATCH` row with the live values seen at that moment.
 
 Changes while porting: watch fields never show the person's normal value when no reading exists (plan §12),
 BP/temperature/glucose are not labelled as watch readings, input sanity checks (e.g. systolic 60–250, top number

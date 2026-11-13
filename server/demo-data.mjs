@@ -207,6 +207,7 @@ export const READING_COLUMNS = [
   'sensor_mode',
   'quality',
   'note',
+  'symptoms',
 ]
 
 /** Replace all SYNTHETIC_DEMO rows in the database with a freshly generated set (idempotent). */
@@ -218,7 +219,7 @@ export function seedDemoReadings(db) {
   db.exec('BEGIN')
   try {
     db.prepare('DELETE FROM readings WHERE data_origin = ?').run(DEMO_ORIGIN)
-    for (const r of rows) insert.run(...READING_COLUMNS.map((c) => r[c]))
+    for (const r of rows) insert.run(...READING_COLUMNS.map((c) => r[c] ?? null))
     db.exec('COMMIT')
   } catch (error) {
     db.exec('ROLLBACK')

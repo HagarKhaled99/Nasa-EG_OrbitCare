@@ -11,6 +11,7 @@
  */
 import type { ReadingHistory } from '../health'
 import type { MeasuredIndicatorId } from '../indicators'
+import type { SymptomId } from '../symptoms'
 import { ApiError, ApiUnavailableError } from './crew-api'
 
 export type DataOrigin = 'SYNTHETIC_DEMO' | 'SIMULATED_WATCH' | 'MANUAL_CHECKIN'
@@ -33,6 +34,8 @@ export interface Reading {
   sensor_mode: 'rest' | 'motion' | 'manual' | null
   quality: 'good' | 'poor' | 'no-signal' | null
   note: string | null
+  /** Symptoms reported at check-in (ids from src/lib/orbit/symptoms.ts), or null. */
+  symptoms: SymptomId[] | null
 }
 
 export type NewReading = Partial<Omit<Reading, 'id' | 'data_origin'>> & {

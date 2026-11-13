@@ -8,6 +8,9 @@
  *  - Blood pressure (cuff), temperature (thermometer) and glucose (meter) are typed in. The watch does not
  *    measure them (plan §3).
  *  - Saving calls submitCheckIn(): the twin updates at once and a MANUAL_CHECKIN row is stored in the database.
+ *  - Live watch feed (mock adapter, every 5 s) with time and signal quality. Watch values can never be edited.
+ *  - Symptoms checklist: urgent symptoms raise Act even when the numbers look normal (plan §7).
+ *  - Radiation comes from the separate personal dosimeter (read-only), not from the watch.
  */
 import { useState } from 'react'
 import {
@@ -18,8 +21,12 @@ import {
   Frown,
   Laugh,
   Loader2,
+  Lock,
   Meh,
-  RefreshCw,
+  Pause,
+  Play,
+  Radiation,
+  Siren,
   Smile,
   Watch,
   X,
@@ -29,12 +36,29 @@ import { cn } from '@/lib/utils'
 import { MISSION_DAY } from '@/lib/orbit/crew'
 import { READING_SOURCE, WATCH_SYNC, type ReadingSource } from '@/lib/orbit/sensors'
 import { deviationStatus, type Status } from '@/lib/orbit/health'
-import { INDICATORS, type MeasuredIndicatorId } from '@/lib/orbit/indicators'
+import { INDICATORS, RADIATION_CAREER_LIMIT, type MeasuredIndicatorId } from '@/lib/orbit/indicators'
+import { WATCH_POLL_MS, type SampleQuality } from '@/lib/orbit/sensor-adapter'
+import { SYMPTOMS, type SymptomId } from '@/lib/orbit/symptoms'
 import { HowWhyDialog } from './how-why-dialog'
 import { useOrbit } from './orbit-provider'
 import { StatusPill } from './status-pill'
 
-const WATCH_IDS: MeasuredIndicatorId[] = ['heartRate', 'spo2', 'sleep', 'exercise']
+/** Streamed every 5 s by the watch. */
+const LIVE_IDS = ['heartRate', 'spo2'] as const
+/** Summarised once a day by the watch. */
+const DAILY_IDS: MeasuredIndicatorId[] = ['sleep', 'exercise']
+
+const QUALITY_TEXT: Record<SampleQuality, { label: string; className: string }> = {
+  good: { label: 'Good signal', className: 'text-status-ok' },
+  motion: { label: 'Wrist moving · reading not used', className: 'text-status-watch' },
+  'no-signal': { label: 'No signal', className: 'text-muted-foreground' },
+}
+
+function secondsAgo(at: number | undefined) {
+  if (!at) return null
+  const s = Math.max(0, Math.round((Date.now() - at) / 1000))
+  return s < 2 ? 'just now' : `${s} s ago`
+}
 
 const MANUAL_GROUPS: { title: string; hint: string; ids: MeasuredIndicatorId[] }[] = [
   {
@@ -90,13 +114,21 @@ function checkValue(id: MeasuredIndicatorId, raw: string): { value?: number; err
 }
 
 export function CheckInForm() {
-  const { astronaut, indicators, readings, readingsStatus, submitCheckIn, checkedInToday, organs } = useOrbit()
+  const { astronaut, indicators, readings, readingsStatus, submitCheckIn, checkedInToday, organs, watch, symptomsToday } =
+    useOrbit()
+  const [symptoms, setSymptoms] = useState<SymptomId[]>(symptomsToday)
+  const urgentChosen = SYMPTOMS.filter((x) => x.level === 'act' && symptoms.includes(x.id))
+  const toggleSymptom = (id: SymptomId) =>
+    setSymptoms((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  const lastPacket = watch.samples[watch.samples.length - 1]
+  const todayDose = [...readings]
+    .reverse()
+    .find((r) => r.mission_day === MISSION_DAY && r.radiation_dose_msv_daily !== null)?.radiation_dose_msv_daily
   const [values, setValues] = useState<Partial<Record<MeasuredIndicatorId, string>>>({})
   const [photo, setPhoto] = useState<string | null>(null)
   const [showErrors, setShowErrors] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedTo, setSavedTo] = useState<'database' | 'tablet-only' | null>(null)
-  const [syncedAt, setSyncedAt] = useState<Date | null>(null)
 
   const checks = Object.fromEntries(MANUAL_IDS.map((id) => [id, checkValue(id, values[id] ?? '')])) as Record<
     MeasuredIndicatorId,
@@ -109,10 +141,6 @@ export function CheckInForm() {
   const filled = MANUAL_IDS.filter((id) => checks[id].value !== undefined).length + (values.mood ? 1 : 0)
   const progress = Math.round((filled / TOTAL_FIELDS) * 100)
 
-  // Today's watch row from the database (for the signal-quality note).
-  const todayWatch = [...readings]
-    .reverse()
-    .find((r) => r.mission_day === MISSION_DAY && r.data_origin !== 'MANUAL_CHECKIN')
 
   const setValue = (id: MeasuredIndicatorId, value: string) => setValues((prev) => ({ ...prev, [id]: value }))
 
@@ -126,7 +154,7 @@ export function CheckInForm() {
     for (const id of MANUAL_IDS) if (checks[id].value !== undefined) parsed[id] = checks[id].value
     if (values.mood) parsed.mood = Number(values.mood)
     setSaving(true)
-    const where = await submitCheckIn(parsed)
+    const where = await submitCheckIn(parsed, { symptoms })
     setSaving(false)
     setSavedTo(where)
   }
@@ -139,6 +167,12 @@ export function CheckInForm() {
       >
         <CheckCircle2 className="size-12 text-status-ok" aria-hidden />
         <h2 className="text-2xl font-semibold">Check-in logged</h2>
+        {urgentChosen.length > 0 && (
+          <p role="alert" className="flex items-center gap-2 rounded-xl border border-status-act/40 bg-status-act/10 px-3 py-2 text-sm font-medium">
+            <Siren className="size-4 text-status-act" aria-hidden />
+            Urgent symptom reported. Tell the crew medical officer now.
+          </p>
+        )}
         <p className="text-muted-foreground">
           {savedTo === 'database'
             ? 'Saved to the crew database. Your twin has been updated.'
@@ -173,17 +207,26 @@ export function CheckInForm() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 font-medium">
-              Synced from your ORBIT watch
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-status-ok">
-                <span className="size-2 rounded-full bg-status-ok" aria-hidden />
-                {readingsStatus === 'database' ? 'Crew database' : 'Simulated feed'}
+              Live from your ORBIT watch
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 text-xs font-medium',
+                  watch.paused ? 'text-muted-foreground' : watch.stale ? 'text-status-watch' : 'text-status-ok',
+                )}
+              >
+                <span
+                  className={cn(
+                    'size-2 rounded-full',
+                    watch.paused ? 'bg-muted-foreground' : watch.stale ? 'bg-status-watch' : 'bg-status-ok animate-pulse',
+                  )}
+                  aria-hidden
+                />
+                {watch.paused ? 'Paused' : watch.stale ? 'Stale: no good reading for 30 s' : `Streaming every ${WATCH_POLL_MS / 1000} s`}
               </span>
             </p>
-            <p className="mt-0.5 text-sm text-muted-foreground" aria-live="polite">
-              {syncedAt
-                ? `Synced ${syncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                : `Last sync ${WATCH_SYNC.lastSync}`}{' '}
-              · battery {WATCH_SYNC.battery}% · mission day {MISSION_DAY}
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Last packet {secondsAgo(lastPacket?.at) ?? '—'} · battery {WATCH_SYNC.battery}% · mission day {MISSION_DAY} ·{' '}
+              {readingsStatus === 'database' ? 'history from the crew database' : 'simulated history'}
             </p>
             <div className="mt-3 flex items-center gap-3">
               <div
@@ -202,9 +245,9 @@ export function CheckInForm() {
             </div>
           </div>
         </div>
-        <Button type="button" variant="outline" className="h-11 px-4" onClick={() => setSyncedAt(new Date())}>
-          <RefreshCw aria-hidden />
-          Sync again
+        <Button type="button" variant="outline" className="h-11 px-4" onClick={() => watch.setPaused(!watch.paused)}>
+          {watch.paused ? <Play aria-hidden /> : <Pause aria-hidden />}
+          {watch.paused ? 'Resume stream' : 'Pause stream'}
         </Button>
       </div>
 
@@ -216,38 +259,101 @@ export function CheckInForm() {
 
       <fieldset className="rounded-2xl border border-border bg-card p-5">
         <legend className="sr-only">From your watch</legend>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold">From your watch</h2>
-          <p className="text-sm text-muted-foreground">
-            Measured automatically overnight and at wake-up. Nothing to type. If a reading is missing, rest and let
-            the watch measure again.
-          </p>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-semibold">From your watch</h2>
+            <p className="text-sm text-muted-foreground">
+              Measured automatically. Nothing to type: sensor readings cannot be edited. If a reading is unreliable,
+              hold your wrist still and the watch measures again.
+            </p>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            <Lock className="size-3" aria-hidden />
+            Read-only
+          </span>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {WATCH_IDS.map((id) => {
+          {LIVE_IDS.map((id) => {
             const state = indicators[id]
             const known = state && Number.isFinite(state.value)
-            const noSignal = todayWatch?.quality === 'no-signal' && !known
+            const quality = lastPacket ? (id === 'heartRate' ? lastPacket.heartRateQuality : lastPacket.spo2Quality) : null
+            const rawLast = lastPacket ? (id === 'heartRate' ? lastPacket.heartRate : lastPacket.spo2) : null
+            const goodAt = watch.good[id]?.at
+            return (
+              <FieldCard key={id} id={id} baseline={astronaut.baseline[id]} status={known ? state.status : 'unknown'}>
+                <div className="flex items-center justify-between rounded-lg border border-input bg-background px-4 py-3" aria-live="polite">
+                  {known ? (
+                    <span className="font-mono text-2xl font-semibold">{state.value.toFixed(INDICATORS[id].decimals)}</span>
+                  ) : (
+                    <span className="text-sm font-medium text-muted-foreground">No signal</span>
+                  )}
+                  <span className="text-sm text-muted-foreground">{INDICATORS[id].unit}</span>
+                </div>
+                {quality ? (
+                  <p className={cn('text-xs', QUALITY_TEXT[quality].className)}>
+                    {QUALITY_TEXT[quality].label}
+                    {quality === 'motion' && rawLast !== null && ` (${rawLast} ${INDICATORS[id].unit})`}
+                    {goodAt && ` · last good ${secondsAgo(goodAt)}`}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Waiting for the first packet…</p>
+                )}
+                {!known && (
+                  <p className="text-xs text-muted-foreground">Unknown, not normal. Keep your wrist still for a minute.</p>
+                )}
+              </FieldCard>
+            )
+          })}
+          {DAILY_IDS.map((id) => {
+            const state = indicators[id]
+            const known = state && Number.isFinite(state.value)
             return (
               <FieldCard key={id} id={id} baseline={astronaut.baseline[id]} status={known ? state.status : 'unknown'}>
                 <div className="flex items-center justify-between rounded-lg border border-input bg-background px-4 py-3">
                   {known ? (
                     <span className="font-mono text-2xl font-semibold">{state.value.toFixed(INDICATORS[id].decimals)}</span>
                   ) : (
-                    <span className="text-sm font-medium text-muted-foreground">
-                      {noSignal ? 'No signal' : 'No reading yet'}
-                    </span>
+                    <span className="text-sm font-medium text-muted-foreground">No reading yet</span>
                   )}
                   <span className="text-sm text-muted-foreground">{INDICATORS[id].unit}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {known
-                    ? 'Simulated watch reading · demo data'
-                    : 'Unknown, not normal. Keep your wrist still for a minute so the watch can measure again.'}
+                  {id === 'sleep' ? 'Last night, estimated from wrist movement' : 'Today, from the exercise devices'}
                 </p>
               </FieldCard>
             )
           })}
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Simulated watch (demo data). SpO₂ is a proposed sensor design, not a validated spaceflight instrument.
+        </p>
+      </fieldset>
+
+      <fieldset className="rounded-2xl border border-border bg-card p-5">
+        <legend className="sr-only">Personal dosimeter</legend>
+        <div className="flex flex-wrap items-start gap-4">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+            <Radiation className="size-5" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-semibold">Radiation · personal dosimeter</h2>
+            <p className="text-sm text-muted-foreground">
+              A separate radiation sensor worn on your chest. The watch cannot measure radiation. Read-only.
+            </p>
+          </div>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+            <dt className="text-muted-foreground">Today</dt>
+            <dd className="font-mono font-semibold">
+              {todayDose != null ? `${todayDose.toFixed(2)} mSv` : <span className="text-muted-foreground">Unknown</span>}
+            </dd>
+            <dt className="text-muted-foreground">Mission total</dt>
+            <dd className="font-mono font-semibold">
+              {Math.round(indicators.radiationDose.value)} mSv{' '}
+              <span className="font-normal text-muted-foreground">
+                ({Math.round((indicators.radiationDose.value / RADIATION_CAREER_LIMIT) * 100)}% of {RADIATION_CAREER_LIMIT})
+              </span>
+            </dd>
+          </dl>
         </div>
       </fieldset>
 
@@ -296,6 +402,61 @@ export function CheckInForm() {
           </div>
         </fieldset>
       ))}
+
+      <fieldset className="rounded-2xl border border-border bg-card p-5">
+        <legend className="sr-only">Symptoms</legend>
+        <h2 className="text-lg font-semibold">Any symptoms today?</h2>
+        <p className="text-sm text-muted-foreground">
+          Tick everything you notice. Urgent symptoms raise an alert even when your numbers look normal.
+        </p>
+        {(['act', 'watch'] as const).map((level) => (
+          <div key={level} className="mt-4">
+            <p
+              className={cn(
+                'mb-2 font-mono text-[11px] font-semibold tracking-[0.14em] uppercase',
+                level === 'act' ? 'text-status-act' : 'text-muted-foreground',
+              )}
+            >
+              {level === 'act' ? 'Urgent' : 'Other'}
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {SYMPTOMS.filter((x) => x.level === level).map((x) => {
+                const checked = symptoms.includes(x.id)
+                return (
+                  <label
+                    key={x.id}
+                    className={cn(
+                      'flex cursor-pointer items-start gap-3 rounded-xl border bg-secondary/40 p-3 text-sm transition-colors hover:bg-secondary focus-within:ring-2 focus-within:ring-ring',
+                      checked ? (level === 'act' ? 'border-status-act bg-status-act/10' : 'border-primary bg-primary/10') : 'border-border',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleSymptom(x.id)}
+                      className="mt-0.5 size-4 accent-[var(--primary)]"
+                    />
+                    <span>
+                      <span className="font-medium">{x.label}</span>
+                      <span className="block text-xs text-muted-foreground">{x.why}</span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+        {urgentChosen.length > 0 && (
+          <p role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-status-act/40 bg-status-act/10 p-3 text-sm">
+            <Siren className="mt-0.5 size-4 shrink-0 text-status-act" aria-hidden />
+            <span>
+              <span className="font-semibold">Tell the crew medical officer now.</span> Your twin will raise an Act alert
+              for {urgentChosen.map((x) => x.label.toLowerCase()).join(', ')}, even if your readings look normal. Demo
+              criteria, to be reviewed by a flight surgeon.
+            </span>
+          </p>
+        )}
+      </fieldset>
 
       <fieldset className="rounded-2xl border border-border bg-card p-5">
         <legend className="sr-only">Mood</legend>
@@ -375,7 +536,7 @@ export function CheckInForm() {
         ) : (
           <p className="text-sm text-muted-foreground">You can skip any field you cannot measure today.</p>
         )}
-        <Button type="submit" className="h-12 px-6 text-base" disabled={filled === 0 || saving}>
+        <Button type="submit" className="h-12 px-6 text-base" disabled={(filled === 0 && symptoms.length === 0) || saving}>
           {saving && <Loader2 className="animate-spin" aria-hidden />}
           {saving ? 'Saving…' : 'Save check-in'}
         </Button>

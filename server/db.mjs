@@ -60,7 +60,8 @@ export function openDatabase(path = DB_PATH) {
       data_origin                   TEXT NOT NULL,   -- SYNTHETIC_DEMO | SIMULATED_WATCH | MANUAL_CHECKIN
       sensor_mode                   TEXT,            -- rest | motion | manual
       quality                       TEXT,            -- good | poor | no-signal
-      note                          TEXT
+      note                          TEXT,
+      symptoms                      TEXT             -- JSON array of symptom ids (check-in), NULL if none
     );
     CREATE INDEX IF NOT EXISTS readings_by_astronaut ON readings (astronaut_id, mission_day);
 
@@ -72,6 +73,9 @@ export function openDatabase(path = DB_PATH) {
       detail       TEXT
     );
   `)
+  // Upgrade older databases: add columns that were introduced later (keeps existing rows).
+  const readingColumns = db.prepare('PRAGMA table_info(readings)').all().map((c) => c.name)
+  if (!readingColumns.includes('symptoms')) db.exec('ALTER TABLE readings ADD COLUMN symptoms TEXT')
   return db
 }
 

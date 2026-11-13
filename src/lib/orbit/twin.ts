@@ -37,6 +37,7 @@ import {
 import { RADIATION_CAREER_LIMIT, type IndicatorId } from './indicators'
 import type { OrganId } from './organs'
 import { WATCH_SYNC } from './sensors'
+import { symptomLevels, type SymptomId } from './symptoms'
 
 export type TwinStatus = Status | 'unknown'
 
@@ -434,6 +435,8 @@ export interface TwinOrganCard {
   sources: DataSourceId[]
   unknownCount: number
   nextStep: string
+  /** Symptoms reported today for this system (self-report). */
+  symptoms: string[]
   position: { x: number; y: number }
 }
 
@@ -591,14 +594,19 @@ export interface TwinInputs {
   now?: Date
   /** Demo button: pretend the Mars blackout has started today. */
   forceBlackout?: boolean
+  /** Symptoms reported at today's check-in. Urgent ones raise Act even when the numbers look normal (plan §7). */
+  symptoms?: SymptomId[]
 }
 
 export function buildTwinSnapshot(input: TwinInputs): TwinSnapshot {
   const { astronaut, env, indicators, organs, readiness, checkedInToday } = input
 
+  const reported = symptomLevels(input.symptoms ?? [])
   const cards: TwinOrganCard[] = organs.map(({ organ }) => {
     const summaries = organ.indicators.map((id) => summarize(indicators[id], id, astronaut, checkedInToday))
-    const status = organTwinStatus(summaries.map((s) => s.status))
+    const symptom = reported[organ.id]
+    const measured = organTwinStatus(summaries.map((s) => s.status))
+    const status = symptom ? worstTwinStatus([measured, symptom.level]) : measured
     const lead = [...summaries].sort((a, b) => TWIN_STATUS_RANK[b.status] - TWIN_STATUS_RANK[a.status])[0]
     return {
       id: organ.id,
@@ -613,9 +621,12 @@ export function buildTwinSnapshot(input: TwinInputs): TwinSnapshot {
       sources: [...new Set(summaries.map((s) => s.source))],
       unknownCount: summaries.filter((s) => s.status === 'unknown').length,
       nextStep:
-        status === 'unknown'
-          ? 'Repeat the measurement so your twin can check this system.'
-          : (organ.actions[status][0] ?? 'Keep your routine going.'),
+        symptom?.level === 'act'
+          ? `You reported: ${symptom.labels.join(', ').toLowerCase()}. Tell the crew medical officer now.`
+          : status === 'unknown'
+            ? 'Repeat the measurement so your twin can check this system.'
+            : (organ.actions[status][0] ?? 'Keep your routine going.'),
+      symptoms: symptom?.labels ?? [],
       position: FIGURE_POSITION[astronaut.figure][organ.id] ?? organ.position,
     }
   })

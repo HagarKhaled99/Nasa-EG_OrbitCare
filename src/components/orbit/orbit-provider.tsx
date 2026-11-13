@@ -8,6 +8,9 @@
  *  - Readings: the signed-in astronaut's daily vitals from the database (GET /api/readings) drive the twin's
  *    history and today's values. Missing values stay missing (UNKNOWN), never "normal".
  *  - Check-in: `submitCheckIn` updates the twin instantly AND saves a MANUAL_CHECKIN row in the database.
+ *  - Live watch: the mock sensor adapter sends a heart-rate/SpO₂ packet every 5 s; only good-quality packets
+ *    update the twin (motion artefacts are shown but ignored).
+ *  - Symptoms: urgent symptoms from today's check-in raise Act on their body system even if numbers look normal.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { CREW, MISSION_DAY, type Astronaut, type CrewVote } from '@/lib/orbit/crew'
@@ -32,6 +35,16 @@ import {
   type OrganState,
 } from '@/lib/orbit/health'
 import type { IndicatorId, MeasuredIndicatorId } from '@/lib/orbit/indicators'
+import { worstStatus } from '@/lib/orbit/health'
+import { symptomLevels, type SymptomId } from '@/lib/orbit/symptoms'
+import {
+  WATCH_POLL_MS,
+  WATCH_STALE_MS,
+  latestGood,
+  nextWatchSample,
+  type WatchCentre,
+  type WatchSample,
+} from '@/lib/orbit/sensor-adapter'
 
 /** Connection state of the crew database server. */
 export type CrewDbStatus = 'loading' | 'online' | 'offline'
@@ -41,6 +54,21 @@ export type SessionStatus = 'checking' | 'signed-in' | 'signed-out'
 export type ReadingsStatus = 'idle' | 'loading' | 'database' | 'built-in'
 
 type Overrides = Partial<Record<MeasuredIndicatorId, number>>
+
+export interface WatchStream {
+  /** Newest packets first is NOT guaranteed: oldest first, last 24 kept. */
+  samples: WatchSample[]
+  /** Latest good-quality value per measurement (what the twin uses). */
+  good: ReturnType<typeof latestGood>
+  /** No good packet for 30 s. */
+  stale: boolean
+  paused: boolean
+  setPaused: (paused: boolean) => void
+}
+
+export interface CheckInExtras {
+  symptoms?: SymptomId[]
+}
 
 /** Check-in indicator → database column (Member 4's check-in page calls submitCheckIn with indicator ids). */
 const CHECK_IN_COLUMN: Partial<Record<MeasuredIndicatorId, keyof NewReading>> = {
@@ -89,7 +117,11 @@ interface OrbitContextValue {
    * Resolves to where it was saved: 'database', 'tablet-only' (server unreachable or value not stored in the
    * readings table, e.g. grip/vision/glucose), so the page can tell the astronaut honestly.
    */
-  submitCheckIn: (values: Overrides) => Promise<'database' | 'tablet-only'>
+  submitCheckIn: (values: Overrides, extras?: CheckInExtras) => Promise<'database' | 'tablet-only'>
+  /** Live simulated watch feed (mock sensor adapter). */
+  watch: WatchStream
+  /** Symptoms reported at today's check-in. */
+  symptomsToday: SymptomId[]
   castVote: (targetId: string, seemsLikeThemselves: boolean) => void
   myVoteFor: (targetId: string) => boolean | undefined
   reportsSent: number
@@ -231,6 +263,9 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
   )
 
   const [overrides, setOverrides] = useState<Record<string, Overrides>>({})
+  const [localSymptoms, setLocalSymptoms] = useState<Record<string, SymptomId[]>>({})
+  const [samples, setSamples] = useState<WatchSample[]>([])
+  const [watchPaused, setWatchPaused] = useState(false)
   const [voteChanges, setVoteChanges] = useState<Record<string, Record<string, boolean>>>({})
   const [reports, setReports] = useState<Record<string, number>>({})
 
@@ -238,9 +273,11 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
   const env = getEnvironment(envId)
 
   const submitCheckIn = useCallback(
-    async (values: Overrides): Promise<'database' | 'tablet-only'> => {
+    async (values: Overrides, extras: CheckInExtras = {}): Promise<'database' | 'tablet-only'> => {
       const id = astronaut.id
       setOverrides((prev) => ({ ...prev, [id]: { ...prev[id], ...values } }))
+      const symptoms = extras.symptoms ?? []
+      setLocalSymptoms((prev) => ({ ...prev, [id]: symptoms }))
       const row: NewReading = { astronaut_id: id, mission_day: MISSION_DAY, data_origin: 'MANUAL_CHECKIN', sensor_mode: 'manual' }
       let any = false
       for (const [indicator, value] of Object.entries(values) as Array<[MeasuredIndicatorId, number]>) {
@@ -250,9 +287,26 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
           any = true
         }
       }
+      if (symptoms.length > 0) {
+        row.symptoms = symptoms
+        any = true
+      }
       if (!any) return 'tablet-only'
       try {
         await saveReading(row)
+        // Store the watch values the astronaut saw at check-in time (latest good packets).
+        const good = latestGood(samples)
+        if (good.heartRate || good.spo2) {
+          await saveReading({
+            astronaut_id: id,
+            mission_day: MISSION_DAY,
+            data_origin: 'SIMULATED_WATCH',
+            sensor_mode: 'rest',
+            quality: 'good',
+            heart_rate_bpm: good.heartRate?.value ?? null,
+            spo2_pct: good.spo2?.value ?? null,
+          })
+        }
         await loadReadings(id)
         return 'database'
       } catch {
@@ -260,7 +314,7 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
         return 'tablet-only'
       }
     },
-    [astronaut.id, loadReadings],
+    [astronaut.id, loadReadings, samples],
   )
 
   const votesFor = useCallback(
@@ -286,15 +340,63 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
     readings.some((r) => r.data_origin === 'MANUAL_CHECKIN' && r.mission_day === MISSION_DAY)
   const readingHistory = useMemo(() => toReadingHistory(readings), [readings])
 
+  // Today's centre for the simulated watch: the database value for today (null = no signal today).
+  const watchCentre = useMemo<WatchCentre>(() => {
+    const today = (id: 'heartRate' | 'spo2') => {
+      const points = readingHistory[id]
+      const last = points?.[points.length - 1]
+      if (last && last.day === MISSION_DAY) return last.value
+      return astronaut.today[id] ?? astronaut.baseline[id]
+    }
+    return { heartRate: today('heartRate'), spo2: today('spo2') }
+  }, [readingHistory, astronaut])
+
+  // Mock polling: one packet every 5 s while someone is signed in.
+  useEffect(() => {
+    setSamples([])
+  }, [astronautId])
+  useEffect(() => {
+    if (!session || watchPaused) return
+    const push = () => setSamples((prev) => [...prev.slice(-23), nextWatchSample(watchCentre)])
+    push()
+    const timer = window.setInterval(push, WATCH_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [session, watchPaused, watchCentre])
+
+  const watchGood = useMemo(() => latestGood(samples), [samples])
+  const newestGood = Math.max(watchGood.heartRate?.at ?? 0, watchGood.spo2?.at ?? 0)
+  const lastPacket = samples[samples.length - 1]?.at ?? 0
+  const watchStale = samples.length > 0 && lastPacket - newestGood > WATCH_STALE_MS
+  // Live values feed the twin (good packets only); a manual check-in value for the same field wins.
+  const liveOverrides = useMemo<Overrides>(() => {
+    const out: Overrides = {}
+    if (watchStale) return out
+    if (watchGood.heartRate) out.heartRate = watchGood.heartRate.value
+    if (watchGood.spo2) out.spo2 = watchGood.spo2.value
+    return out
+  }, [watchGood, watchStale])
+
+  // Today's symptoms: this tablet's latest check-in, else the latest check-in stored in the database.
+  const symptomsToday = useMemo<SymptomId[]>(() => {
+    if (localSymptoms[astronautId]) return localSymptoms[astronautId]
+    const row = [...readings].reverse().find((r) => r.mission_day === MISSION_DAY && r.data_origin === 'MANUAL_CHECKIN')
+    return row?.symptoms ?? []
+  }, [localSymptoms, astronautId, readings])
+
   const value = useMemo<OrbitContextValue>(() => {
     const indicators = computeIndicators({
       astronaut,
       env,
-      overrides: overrides[astronaut.id] ?? {},
+      overrides: { ...liveOverrides, ...(overrides[astronaut.id] ?? {}) },
       votes,
       readings: readingHistory,
     })
-    const organs = computeOrgans(indicators)
+    // Urgent symptoms raise their body system even when the numbers look normal (plan §7).
+    const reported = symptomLevels(symptomsToday)
+    const organs = computeOrgans(indicators).map((o) => {
+      const symptom = reported[o.organ.id]
+      return symptom ? { ...o, status: worstStatus([o.status, symptom.level]) } : o
+    })
     const alerts = organs
       .filter((o) => o.status !== 'normal')
       .sort((a, b) => STATUS_RANK[b.status] - STATUS_RANK[a.status])
@@ -322,6 +424,8 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
       removeCrewMember,
       setEnvironmentId,
       submitCheckIn,
+      watch: { samples, good: watchGood, stale: watchStale, paused: watchPaused, setPaused: setWatchPaused },
+      symptomsToday,
       castVote: (targetId, seems) =>
         setVoteChanges((prev) => ({
           ...prev,
@@ -353,6 +457,12 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
     createCrewProfile,
     removeCrewMember,
     submitCheckIn,
+    liveOverrides,
+    symptomsToday,
+    samples,
+    watchGood,
+    watchStale,
+    watchPaused,
   ])
 
   return <OrbitContext.Provider value={value}>{children}</OrbitContext.Provider>
