@@ -67,6 +67,32 @@ export function openDatabase(path = DB_PATH) {
       vision_lines                  REAL             -- near-vision card (check-in)
     );
 
+    -- ---------- Ground portal (Earth) ----------
+    -- Advice from the flight surgeon to one astronaut. It travels with the real one-way delay:
+    -- shown to the astronaut only once arrives_at has passed.
+    CREATE TABLE IF NOT EXISTS ground_messages (
+      id           TEXT PRIMARY KEY,
+      astronaut_id TEXT NOT NULL,
+      from_id      TEXT NOT NULL,
+      from_name    TEXT NOT NULL,
+      body         TEXT NOT NULL,
+      sent_at      TEXT NOT NULL,
+      arrives_at   TEXT NOT NULL,
+      read_at      TEXT
+    );
+
+    -- Fitness-for-duty decisions by the flight surgeon. The mission director sees status + restrictions only;
+    -- medical_note is visible to the flight surgeon and the astronaut, never to management.
+    CREATE TABLE IF NOT EXISTS fitness_decisions (
+      id           TEXT PRIMARY KEY,
+      astronaut_id TEXT NOT NULL,
+      status       TEXT NOT NULL CHECK (status IN ('ready', 'limited', 'not-ready')),
+      restrictions TEXT,
+      medical_note TEXT,
+      decided_by   TEXT NOT NULL,
+      decided_at   TEXT NOT NULL
+    );
+
     -- Small key/value table (e.g. which version of the demo dataset is loaded).
     CREATE TABLE IF NOT EXISTS meta (
       key   TEXT PRIMARY KEY,
@@ -125,6 +151,8 @@ export function openDatabase(path = DB_PATH) {
     );
   `)
   // Upgrade older databases: add columns that were introduced later (keeps existing rows).
+  const reportColumns = db.prepare('PRAGMA table_info(medical_reports)').all().map((c) => c.name)
+  if (!reportColumns.includes('arrives_at')) db.exec('ALTER TABLE medical_reports ADD COLUMN arrives_at TEXT')
   const readingColumns = db.prepare('PRAGMA table_info(readings)').all().map((c) => c.name)
   for (const [column, type] of [
     ['symptoms', 'TEXT'],

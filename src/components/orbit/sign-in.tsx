@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, Clock, Database, Delete, Loader2, Lock, PenLine, RefreshCw, Search, Settings2, Watch, X } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Clock, Database, Globe2, Delete, Loader2, Lock, PenLine, RefreshCw, Search, Settings2, Watch, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MISSION_DAY, MISSION_NAME } from '@/lib/orbit/crew'
 import {
@@ -281,6 +281,13 @@ export function SignIn() {
           >
             <Settings2 className="size-4" aria-hidden />
             Manage crew database
+          </Link>
+          <Link
+            to="/ground/login"
+            className="inline-flex items-center gap-2 self-start rounded-md text-sm font-medium text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <Globe2 className="size-4" aria-hidden />
+            Ground team on Earth? Open the Ground portal
           </Link>
 
           <div className="rounded-xl border border-border bg-secondary/40 p-4 text-sm leading-relaxed text-muted-foreground">

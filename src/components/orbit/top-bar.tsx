@@ -1,6 +1,9 @@
 
 import { LogOut, Radio } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { cn } from '@/lib/utils'
+import { FITNESS_LABEL } from '@/lib/orbit/api/ground-api'
+import { FITNESS_STYLE } from './inbox'
 import { MISSION_DAY } from '@/lib/orbit/crew'
 import { ENVIRONMENTS, formatDelay, type EnvironmentId } from '@/lib/orbit/environments'
 import { useOrbit } from './orbit-provider'
@@ -10,7 +13,8 @@ const selectClass =
   'h-10 rounded-lg border border-input bg-secondary px-3 text-sm font-medium text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none'
 
 export function TopBar() {
-  const { astronaut, env, readiness, setEnvironmentId, signOut } = useOrbit()
+  const { astronaut, env, readiness, setEnvironmentId, signOut, inbox } = useOrbit()
+  const fitness = inbox?.fitness ?? null
   const navigate = useNavigate()
 
   return (
@@ -23,7 +27,19 @@ export function TopBar() {
           <div className="min-w-0">
             {/* Locked to the signed-in account (Member 2). To change person, sign out and sign in again. */}
             <p className="truncate text-base font-semibold">{astronaut.name}</p>
-            <p className="text-xs text-muted-foreground">{astronaut.role}</p>
+            <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+              {astronaut.role}
+              {fitness && (
+                <Link
+                  to="/inbox"
+                  className={cn('rounded-full border px-2 py-0.5 font-medium', FITNESS_STYLE[fitness.status].tone)}
+                  title={fitness.restrictions ?? undefined}
+                >
+                  {FITNESS_LABEL[fitness.status]}
+                  {fitness.restrictions ? ` · ${fitness.restrictions}` : ''}
+                </Link>
+              )}
+            </p>
           </div>
         </div>
 

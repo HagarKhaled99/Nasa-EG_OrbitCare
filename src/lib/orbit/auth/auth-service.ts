@@ -17,8 +17,15 @@ export const LOCKOUT_MS = 60_000
 const RECENT_KEY = 'orbit-twin-recent-sign-ins'
 
 export interface Session {
+  /** The signed-in account id (an astronaut, or a ground-team id such as 'ground-surgeon'). */
   astronautId: string
   expiresAt: number
+  /** 'crew' = astronaut portal, 'ground' = Earth portal (set by the server). */
+  kind?: 'crew' | 'ground'
+  role?: string
+  name?: string
+  /** Ground team: 'medical' (flight surgeon) or 'readiness' (mission director). */
+  access?: 'medical' | 'readiness' | null
 }
 
 export type SignInResult =

@@ -46,6 +46,7 @@ import {
 } from '@/lib/orbit/health'
 import type { IndicatorId, MeasuredIndicatorId } from '@/lib/orbit/indicators'
 import { worstStatus } from '@/lib/orbit/health'
+import { fetchInbox, type Inbox } from '@/lib/orbit/api/ground-api'
 import {
   fetchCrewPulse,
   fetchReports,
@@ -143,6 +144,11 @@ interface OrbitContextValue {
   watch: WatchStream
   /** Symptoms reported at today's check-in. */
   symptomsToday: SymptomId[]
+  /** Advice from the ground team and your fitness for duty (Ground portal). null until loaded / offline. */
+  inbox: Inbox | null
+  /** Advice that has arrived and is not read yet. */
+  unreadAdvice: number
+  refreshInbox: () => Promise<void>
   /** True for astronauts who signed up themselves: no invented history, their twin builds from real readings. */
   isNewAstronaut: boolean
   /**
@@ -204,8 +210,10 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
         if (!cancelled) setCrewDbStatus('offline')
       }
       try {
-        const current = await fetchSession()
+        const fetched = await fetchSession()
         if (cancelled) return
+        // A ground-team session belongs to the Ground portal, not to the astronaut app.
+        const current = fetched?.kind === 'ground' ? null : fetched
         setSession(current)
         setSessionStatus(current ? 'signed-in' : 'signed-out')
         if (current) setEnvironmentId(environmentFor(current.astronautId, list))
@@ -355,6 +363,26 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
     },
     [astronaut.id, loadReadings, samples],
   )
+
+  // ---------- Ground portal: inbox (advice + fitness for duty), checked every 15 s ----------
+  const [inbox, setInbox] = useState<Inbox | null>(null)
+  const refreshInbox = useCallback(async () => {
+    try {
+      setInbox(await fetchInbox())
+    } catch {
+      /* offline: keep what we have */
+    }
+  }, [])
+  useEffect(() => {
+    if (!session) {
+      setInbox(null)
+      return
+    }
+    void refreshInbox()
+    const timer = window.setInterval(() => void refreshInbox(), 15_000)
+    return () => window.clearInterval(timer)
+  }, [session, refreshInbox])
+  const unreadAdvice = inbox?.messages.filter((m) => m.arrived && !m.read_at).length ?? 0
 
   // ---------- Member 5: Crew Pulse + report packets from the server ----------
   const [pulse, setPulse] = useState<CrewPulseDay | null>(null)
@@ -597,6 +625,9 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
       symptomsToday,
       isNewAstronaut,
       demo,
+      inbox,
+      unreadAdvice,
+      refreshInbox,
       castVote,
       myVoteFor: (targetId) =>
         voteChanges[targetId]?.[astronaut.id] ?? pulse?.mine.find((v) => v.targetId === targetId)?.seemsLikeThemselves,
@@ -633,6 +664,9 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
     liveOverrides,
     symptomsToday,
     isNewAstronaut,
+    inbox,
+    unreadAdvice,
+    refreshInbox,
     checkInStreak,
     demo,
     samples,

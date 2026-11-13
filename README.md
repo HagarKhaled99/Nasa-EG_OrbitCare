@@ -21,6 +21,27 @@ Requires **Node 22.5+** (built-in `node:sqlite`; nothing extra to install).
 (The member2 branch used separate PINs per person: 2468 / 1357 / 8642 / 9753. We kept the single demo PIN
 shown on the sign-in screen. Change it with `ORBIT_DEMO_PIN` if the team prefers.)
 
+## Users and the two portals
+
+ORBIT TWIN has two portals with the same crew server and database. Onboard decisions stay on board (the plan's
+"your flight surgeon is 20 minutes away, your twin is right here"); Earth reviews, advises and decides fitness
+for duty later, through the light-time delay.
+
+| Portal | User | Role | Sees / does |
+|---|---|---|---|
+| **Astronaut portal** (`/login`) | Sara Haddad | Mission Specialist | own twin, check-in, actions, Crew Pulse, Inbox |
+| | Ahmed Nasser | Flight Engineer | same |
+| | Omar Rahimi | Commander | same |
+| | Lena Fischer | **Crew Medical Officer** (onboard) | same + the crew's health data and medical-officer notifications, to act on board now |
+| **Ground portal** (`/ground/login`) | Dr. Yasmin Farouk *(fictional)* | **Flight Surgeon** | full medical detail: body systems, symptoms, report packets; sends advice; decides fitness for duty (with a private medical note) |
+| | Karim Mansour *(fictional)* | **Mission Director** ("management") | **fitness for duty and restrictions only** (ready / limited / not ready, e.g. "No EVA until cleared"). Never vitals, symptoms, reports or notes |
+
+All demo PINs are **2026** (`ORBIT_DEMO_PIN`, `ORBIT_GROUND_PIN`). Privacy is enforced by the server, not only
+hidden on screen: the director gets 403 on medical endpoints, ground staff cannot write astronaut data, and
+**Crew Pulse never leaves the station**. Advice and report packets travel with the mission's one-way delay
+(Mars ≈ 18 min, Moon 1.3 s, ISS 0.5 s): a message still crossing space shows when it will arrive but cannot be
+read yet. The Demo controls can skip the delay. Simplification: fitness decisions show on board immediately.
+
 ## Judge demo script (2–3 min, plan §11)
 
 Run `npm run start`, open the address it prints, and use the **Demo** button (bottom-right) when told.
@@ -42,6 +63,12 @@ Run `npm run start`, open the address it prints, and use the **Demo** button (bo
 7. **Turn Wi-Fi off:** pages, the twin and the check-in keep working (everything runs on this laptop; the
    service worker keeps the app shell). Optional: show **Daily Check-in** with an urgent symptom (chest pain)
    turning a normal heart red.
+
+8. **Ground portal (business view):** in a second browser window open `/ground/login`, sign in as the **Flight
+   Surgeon** (2026): the crew overview shows Omar's report packet *in transit*. Click **"Demo: skip light delay"**,
+   read the packet, send advice, set **Limited · No EVA until cleared**. Sign in as the **Mission Director**: only
+   the readiness status is visible. Back on board, Omar's **Inbox** shows the advice and the top bar shows the
+   fitness chip.
 
 After a rehearsal, use **Demo → "Reset my demo data"** for each astronaut you changed.
 
@@ -114,6 +141,8 @@ Measured indicators: `heartRate`, `spo2`, `systolic`, `diastolic`, `glucose`, `t
 | `GET/POST /api/action-steps` | ticked "do this now" steps and the alert acknowledgment (Member 5) |
 | `GET/POST /api/medical-notifications` | notify the onboard medical officer; the CMO sees everyone's (Member 5) |
 | `GET/POST /api/medical-reports` | Medical Report Packets queued for Earth; the CMO sees everyone's (Member 5) |
+| `GET /api/ground/crew` · `GET/POST /api/ground/messages` · `GET/POST /api/ground/fitness` | Ground portal (surgeon: medical; director: readiness only) |
+| `GET /api/inbox` · `POST /api/inbox/:id/read` · `POST /api/demo/fast-forward` | astronaut inbox; demo skip of the light delay |
 | `GET/POST /api/crew-pulse` | daily private question. GET returns your answers, the **count** about you and who answered, never who flagged whom (Member 5) |
 | `POST /api/astronauts/:id/reset-pin` | `{ adminPin, newPin }`: forgotten PIN (stored PINs cannot be read). Also lifts a lockout |
 | `GET /api/readings?astronautId=` | your own readings (crew medical officer: anyone's). 401 / 403 otherwise |

@@ -8,6 +8,7 @@ import {
   Rocket,
   Siren,
   Users,
+  Mail,
   Watch,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -23,6 +24,7 @@ const NAV = [
   { href: '/future', label: 'Future Slider', short: 'Future', icon: Hourglass },
   { href: '/actions', label: 'Action Center', short: 'Actions', icon: Siren },
   { href: '/crew', label: 'Crew Pulse', short: 'Crew', icon: Users },
+  { href: '/inbox', label: 'Inbox from Earth', short: 'Inbox', icon: Mail },
   { href: '/mission', label: 'Mission & Routine', short: 'Mission', icon: Rocket },
 ]
 
@@ -34,16 +36,20 @@ function isActive(pathname: string, href: string) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { alerts, checkedInToday, signOut, watch } = useOrbit()
+  const { alerts, checkedInToday, signOut, watch, unreadAdvice } = useOrbit()
   const urgent = alerts.some((a) => a.status === 'act')
 
   const badgeFor = (href: string) => {
     if (href === '/actions' && alerts.length > 0) return String(alerts.length)
     if (href === '/check-in' && !checkedInToday) return 'Due'
+    if (href === '/inbox' && unreadAdvice > 0) return String(unreadAdvice)
     return null
   }
 
-  if (pathname === '/login' || pathname === '/signup' || pathname === '/manage-crew') return <>{children}</>
+  // Auth pages and the Ground portal (its own layout) render without the astronaut shell.
+  if (pathname === '/login' || pathname === '/signup' || pathname === '/manage-crew' || pathname.startsWith('/ground')) {
+    return <>{children}</>
+  }
 
   return (
     <div className="flex min-h-dvh">
@@ -129,7 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-border bg-sidebar/95 px-1 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-border bg-sidebar/95 px-1 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden"
       >
         {NAV.map((item) => {
           const active = isActive(pathname, item.href)

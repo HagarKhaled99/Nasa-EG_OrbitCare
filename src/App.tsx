@@ -6,6 +6,8 @@ import { CheckInPage } from '@/components/orbit/check-in-page'
 import { ComingSoon } from '@/components/orbit/coming-soon'
 import { CrewPulse } from '@/components/orbit/crew-pulse'
 import { FutureSlider } from '@/components/orbit/future-slider'
+import { InboxPage } from '@/components/orbit/inbox'
+import { GroundPortal } from '@/components/ground/ground-portal'
 import { ManageCrew } from '@/components/orbit/manage-crew'
 import { MissionRoutine } from '@/components/orbit/mission-routine'
 import { OrganPage } from '@/components/orbit/organ-page'
@@ -41,6 +43,8 @@ export function App() {
           <Route path="/login" element={<SignIn />} />
           <Route path="/signup" element={<SignUp />} />
           <Route path="/manage-crew" element={<ManageCrew />} />
+          {/* Ground portal (Earth): flight surgeon + mission director, its own sign-in and layout */}
+          <Route path="/ground/*" element={<GroundPortal />} />
           <Route element={<RequireSession />}>
             {/* Member 2 · Twin View */}
             <Route path="/" element={<TwinView />} />
@@ -51,6 +55,8 @@ export function App() {
             {/* Member 5 · Action Center + Crew Pulse */}
             <Route path="/actions" element={<ActionCenter />} />
             <Route path="/crew" element={<CrewPulse />} />
+            {/* Advice from the ground team + fitness for duty */}
+            <Route path="/inbox" element={<InboxPage />} />
             {/* Member 6 · Future Slider + Mission & Routine */}
             <Route path="/future" element={<FutureSlider />} />
             <Route path="/mission" element={<MissionRoutine />} />

@@ -13,8 +13,11 @@ const OPENED_KEY = 'orbit-twin-tab-opened'
 try {
   const firstOpenInThisTab = !sessionStorage.getItem(OPENED_KEY)
   sessionStorage.setItem(OPENED_KEY, '1')
-  const publicPage = ['/login', '/signup', '/manage-crew'].includes(window.location.pathname)
-  if (firstOpenInThisTab && !publicPage) window.history.replaceState(null, '', '/login')
+  const path = window.location.pathname
+  const publicPage = ['/login', '/signup', '/manage-crew', '/ground/login'].includes(path)
+  if (firstOpenInThisTab && !publicPage) {
+    window.history.replaceState(null, '', path.startsWith('/ground') ? '/ground/login' : '/login')
+  }
 } catch {
   /* storage blocked: normal routing (the server session still decides) */
 }

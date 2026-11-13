@@ -4,21 +4,23 @@
  * Every injected value is stored as a SIMULATED_WATCH reading marked "DEMO INJECTION".
  */
 import { useState } from 'react'
-import { Activity, FlaskConical, Loader2, RotateCcw, Siren, X } from 'lucide-react'
+import { Activity, FastForward, FlaskConical, Loader2, RotateCcw, Siren, X } from 'lucide-react'
+import { fastForwardComms } from '@/lib/orbit/api/ground-api'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useOrbit } from './orbit-provider'
 
-type Action = 'worsening' | 'emergency' | 'reset'
+type Action = 'worsening' | 'emergency' | 'reset' | 'comms'
 
 const RESULT: Record<Action, string> = {
   worsening: 'Sent. Heart rate up and sleep down: watch your heart and brain change on the Twin View.',
   emergency: 'Injected: SpO₂ below 90 % with a good signal. The emergency alert opens.',
   reset: 'Your check-ins and injected readings were removed. The demo data is back to its start.',
+  comms: 'Light delay skipped: advice from Earth is in your Inbox, your report packets reached the flight surgeon.',
 }
 
 export function DemoPanel() {
-  const { demo, astronaut } = useOrbit()
+  const { demo, astronaut, refreshInbox } = useOrbit()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState<Action | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -31,7 +33,15 @@ export function DemoPanel() {
         ? await demo.sendWorseningReading()
         : action === 'emergency'
           ? await demo.injectEmergency()
-          : await demo.reset()
+          : action === 'comms'
+            ? await fastForwardComms().then(
+                async () => {
+                  await refreshInbox()
+                  return true
+                },
+                () => false,
+              )
+            : await demo.reset()
     setBusy(null)
     setMessage(ok ? RESULT[action] : 'The crew server is not reachable. Start the app with “npm run dev”.')
   }
@@ -68,6 +78,9 @@ export function DemoPanel() {
             </DemoButton>
             <DemoButton icon={Siren} busy={busy === 'emergency'} onClick={() => void run('emergency')} danger>
               Inject emergency (low SpO₂)
+            </DemoButton>
+            <DemoButton icon={FastForward} busy={busy === 'comms'} onClick={() => void run('comms')}>
+              Skip light delay (Earth ↔ ship)
             </DemoButton>
             <DemoButton icon={RotateCcw} busy={busy === 'reset'} onClick={() => void run('reset')}>
               Reset my demo data
