@@ -11,6 +11,8 @@
  *  - Live watch: the mock sensor adapter sends a heart-rate/SpO₂ packet every 5 s; only good-quality packets
  *    update the twin (motion artefacts are shown but ignored).
  *  - Symptoms: urgent symptoms from today's check-in raise Act on their body system even if numbers look normal.
+ *  - Crew Pulse + Medical Report Packets (Member 5): stored on the server. You only get the combined count of
+ *    what the crew said about you, never who said it.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { CREW, MISSION_DAY, type Astronaut, type CrewVote } from '@/lib/orbit/crew'
@@ -36,6 +38,14 @@ import {
 } from '@/lib/orbit/health'
 import type { IndicatorId, MeasuredIndicatorId } from '@/lib/orbit/indicators'
 import { worstStatus } from '@/lib/orbit/health'
+import {
+  fetchCrewPulse,
+  fetchReports,
+  queueReport,
+  sendCrewPulseVote,
+  type CrewPulseDay,
+  type MedicalReport,
+} from '@/lib/orbit/api/actions-api'
 import { symptomLevels, type SymptomId } from '@/lib/orbit/symptoms'
 import {
   WATCH_POLL_MS,
@@ -122,10 +132,15 @@ interface OrbitContextValue {
   watch: WatchStream
   /** Symptoms reported at today's check-in. */
   symptomsToday: SymptomId[]
-  castVote: (targetId: string, seemsLikeThemselves: boolean) => void
+  /** Answer today's Crew Pulse question about a crewmate (saved on the server as you). */
+  castVote: (targetId: string, seemsLikeThemselves: boolean) => Promise<void>
   myVoteFor: (targetId: string) => boolean | undefined
+  /** Crewmates who have answered today's Crew Pulse (participation only, never the answers). */
+  crewAnswered: string[]
+  /** Medical Report Packets queued today. */
   reportsSent: number
-  sendReport: () => void
+  /** Queue a Medical Report Packet for Earth. Resolves to where it was stored. */
+  sendReport: (report: MedicalReport['report']) => Promise<'database' | 'tablet-only'>
 }
 
 const OrbitContext = createContext<OrbitContextValue | null>(null)
@@ -317,6 +332,61 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
     [astronaut.id, loadReadings, samples],
   )
 
+  // ---------- Member 5: Crew Pulse + report packets from the server ----------
+  const [pulse, setPulse] = useState<CrewPulseDay | null>(null)
+  const [reportsToday, setReportsToday] = useState(0)
+
+  const loadMemberFive = useCallback(async () => {
+    try {
+      setPulse(await fetchCrewPulse(MISSION_DAY))
+    } catch {
+      setPulse(null) // offline: fall back to the demo votes in crew.ts
+    }
+    try {
+      const today = new Date().toDateString()
+      setReportsToday((await fetchReports()).filter((r) => new Date(r.created_at).toDateString() === today).length)
+    } catch {
+      /* keep the tablet count */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!session) {
+      setPulse(null)
+      setReportsToday(0)
+      return
+    }
+    void loadMemberFive()
+  }, [session, loadMemberFive])
+
+  const castVote = useCallback(
+    async (targetId: string, seems: boolean) => {
+      setVoteChanges((prev) => ({ ...prev, [targetId]: { ...prev[targetId], [astronautId]: seems } }))
+      try {
+        await sendCrewPulseVote(MISSION_DAY, targetId, seems)
+        await loadMemberFive()
+      } catch {
+        /* offline: the answer stays on this tablet */
+      }
+    },
+    [astronautId, loadMemberFive],
+  )
+
+  const sendReport = useCallback(
+    async (report: MedicalReport['report']): Promise<'database' | 'tablet-only'> => {
+      setReports((prev) => ({ ...prev, [astronautId]: (prev[astronautId] ?? 0) + 1 }))
+      try {
+        await queueReport(report)
+        await loadMemberFive()
+        setReports((prev) => ({ ...prev, [astronautId]: 0 }))
+        return 'database'
+      } catch {
+        return 'tablet-only'
+      }
+    },
+    [astronautId, loadMemberFive],
+  )
+
   const votesFor = useCallback(
     (targetId: string): CrewVote[] => {
       const target = crew.find((member) => member.id === targetId) ?? crew[0]
@@ -334,7 +404,12 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
     [voteChanges, crew],
   )
 
-  const votes = useMemo(() => votesFor(astronautId), [votesFor, astronautId])
+  // From the server: only the combined count about me, turned into anonymous votes for the health engine.
+  const votes = useMemo<CrewVote[]>(() => {
+    if (!pulse) return votesFor(astronautId)
+    const { flags, total } = pulse.aboutMe
+    return Array.from({ length: total }, (_, i) => ({ fromId: `crewmate-${i + 1}`, seemsLikeThemselves: i >= flags }))
+  }, [pulse, votesFor, astronautId])
   const checkedInToday =
     Boolean(overrides[astronautId]) ||
     readings.some((r) => r.data_origin === 'MANUAL_CHECKIN' && r.mission_day === MISSION_DAY)
@@ -426,14 +501,12 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
       submitCheckIn,
       watch: { samples, good: watchGood, stale: watchStale, paused: watchPaused, setPaused: setWatchPaused },
       symptomsToday,
-      castVote: (targetId, seems) =>
-        setVoteChanges((prev) => ({
-          ...prev,
-          [targetId]: { ...prev[targetId], [astronaut.id]: seems },
-        })),
-      myVoteFor: (targetId) => voteChanges[targetId]?.[astronaut.id],
-      reportsSent: reports[astronaut.id] ?? 0,
-      sendReport: () => setReports((prev) => ({ ...prev, [astronaut.id]: (prev[astronaut.id] ?? 0) + 1 })),
+      castVote,
+      myVoteFor: (targetId) =>
+        voteChanges[targetId]?.[astronaut.id] ?? pulse?.mine.find((v) => v.targetId === targetId)?.seemsLikeThemselves,
+      crewAnswered: [...new Set([...(pulse?.answered ?? []), ...Object.values(voteChanges).flatMap((v) => Object.keys(v))])],
+      reportsSent: reportsToday + (reports[astronaut.id] ?? 0),
+      sendReport,
     }
   }, [
     astronaut,
@@ -450,6 +523,10 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
     checkedInToday,
     voteChanges,
     reports,
+    pulse,
+    reportsToday,
+    castVote,
+    sendReport,
     session,
     sessionStatus,
     signIn,

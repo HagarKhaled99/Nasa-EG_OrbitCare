@@ -6,6 +6,7 @@ import { ComingSoon } from '@/components/orbit/coming-soon'
 import { FutureSlider } from '@/components/orbit/future-slider'
 import { ManageCrew } from '@/components/orbit/manage-crew'
 import { MissionRoutine } from '@/components/orbit/mission-routine'
+import { OrganPage } from '@/components/orbit/organ-page'
 import { SignIn } from '@/components/orbit/sign-in'
 import { SignUp } from '@/components/orbit/sign-up'
 import { TwinView } from '@/components/orbit/twin-view'
@@ -41,6 +42,8 @@ export function App() {
           <Route element={<RequireSession />}>
             {/* Member 2 · Twin View */}
             <Route path="/" element={<TwinView />} />
+            {/* Member 3 · Organ pages */}
+            <Route path="/organ/:organId" element={<OrganPage />} />
             {/* Member 4 · Daily check-in */}
             <Route path="/check-in" element={<CheckInPage />} />
             {/* Member 6 · Future Slider + Mission & Routine */}

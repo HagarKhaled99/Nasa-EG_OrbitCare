@@ -46,7 +46,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 1,
     how: 'Sit still for 2 minutes. Clip the pulse oximeter to your index finger and wait until the number stops changing (about 30 seconds).',
     why: 'Without gravity, fluid shifts toward your head and the heart works differently. A resting rate that slowly climbs above your normal can signal dehydration, stress, poor sleep or the start of an illness.',
-    hazard: 'Altered gravity',
+    hazard: 'Gravity fields',
     source: 'American Heart Association resting ranges',
   },
   spo2: {
@@ -61,7 +61,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 1,
     how: 'Measured by the optical sensor on the back of your watch. Rest for a minute and keep your wrist still with the strap snug. Movement, cold fingers or a loose strap make the number unreliable, so a low value is always measured again before anything else.',
     why: 'SpO₂ shows how much of your blood is carrying oxygen. A drop below your own normal can come from a cabin air problem, a lung or heart issue, or simply poor sensor contact. That is why a repeat reading comes first.',
-    hazard: 'Hostile closed environment',
+    hazard: 'Hostile/closed environments',
     source: 'DEMO criterion (needs medical validation). Watch SpO₂ is a proposed device design, not a validated spaceflight sensor.',
   },
   systolic: {
@@ -77,7 +77,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 1,
     how: 'Rest your arm at heart level. Wrap the cuff 2 cm above the elbow, press start and stay silent until it beeps. Record the top number.',
     why: 'Fluid shift and reduced fitness change how your blood vessels regulate pressure. Large swings raise the risk of fainting after landing and of cardiovascular problems.',
-    hazard: 'Altered gravity',
+    hazard: 'Gravity fields',
     source: 'American Heart Association',
   },
   diastolic: {
@@ -93,7 +93,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 1,
     how: 'Read from the same cuff measurement as systolic. Record the bottom number.',
     why: 'Diastolic pressure shows how relaxed your arteries are between beats. Together with systolic it gives your flight surgeon the full picture.',
-    hazard: 'Altered gravity',
+    hazard: 'Gravity fields',
     source: 'American Heart Association',
   },
   glucose: {
@@ -109,7 +109,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 1,
     how: 'Clean a fingertip with an alcohol pad, prick the side of the finger with the lancet, and touch the test strip to the drop. Measure before breakfast.',
     why: 'Spaceflight can reduce how well your body responds to insulin. Low or high sugar affects focus, mood and immune defence on long missions.',
-    hazard: 'Hostile closed environment',
+    hazard: 'Hostile/closed environments',
     source: 'WHO fasting glucose guidance',
   },
   temperature: {
@@ -125,7 +125,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 0.1,
     how: 'Place the thermometer under your tongue, close your mouth and breathe through your nose until it beeps.',
     why: 'Your immune system weakens in space and microbes spread easily in a closed cabin. A fever is one of the earliest signs of infection.',
-    hazard: 'Radiation & closed environment',
+    hazard: 'Hostile/closed environments',
     source: 'WHO clinical fever threshold',
   },
   sleep: {
@@ -140,7 +140,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 0.5,
     how: 'Use your wrist actigraphy band or estimate from when you fell asleep to when you woke. Do not count time awake in the bag.',
     why: 'There are 16 sunrises a day in orbit and none on the way to Mars. Losing sleep affects mood, reaction time and decision making long before you notice it.',
-    hazard: 'Isolation & confinement',
+    hazard: 'Isolation and confinement',
     source: 'NASA HRP sleep loss risk',
   },
   mood: {
@@ -155,7 +155,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 1,
     how: 'Tap the face that best matches how you feel right now. There is no wrong answer and only you and the crew medical officer can see it.',
     why: 'Months in a small cabin far from home can slowly lower mood. Tracking it daily makes small changes visible before they become big ones.',
-    hazard: 'Isolation & confinement',
+    hazard: 'Isolation and confinement',
     source: 'NASA HRP behavioral health risk',
   },
   exercise: {
@@ -170,7 +170,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 5,
     how: 'Add up today’s minutes on the treadmill, cycle ergometer and resistance device. The devices log this automatically if you sign in.',
     why: 'Exercise is the main defence against bone and muscle loss in low gravity. Missing sessions shows up months later as weaker bones.',
-    hazard: 'Altered gravity',
+    hazard: 'Gravity fields',
     source: 'NASA ISS exercise countermeasures',
   },
   grip: {
@@ -184,7 +184,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 1,
     how: 'Hold the dynamometer with your elbow bent at 90°. Squeeze as hard as you can for 3 seconds. Use the best of three tries with your dominant hand.',
     why: 'Grip strength is a quick, simple sign of overall muscle strength. A steady drop tells you that training needs to change.',
-    hazard: 'Altered gravity',
+    hazard: 'Gravity fields',
     source: 'NASA HRP muscle risk',
   },
   vision: {
@@ -198,7 +198,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 1,
     how: 'Hold the vision card 40 cm from your eyes in good light. Cover one eye and count how many lines you can read clearly, then switch eyes. Record the lower number.',
     why: 'Fluid shift can press on the back of the eye (SANS). Blurry near vision is often the first sign and needs to be followed up.',
-    hazard: 'Altered gravity',
+    hazard: 'Gravity fields',
     source: 'NASA HRP SANS risk',
   },
   boneDensity: {
@@ -212,7 +212,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 0.1,
     how: 'Calculated by your twin from mission days, gravity and your exercise minutes. Compared with your pre-flight scan (100%).',
     why: 'Weight-bearing bones lose roughly 1–1.5% per month in microgravity without countermeasures, raising fracture risk on landing.',
-    hazard: 'Altered gravity',
+    hazard: 'Gravity fields',
     source: 'NASA HRP bone loss findings',
   },
   muscleMass: {
@@ -226,7 +226,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 0.1,
     how: 'Calculated by your twin from mission days, gravity and exercise. Compared with your pre-flight baseline (100%).',
     why: 'Muscles that hold you up on Earth are barely used in space and can shrink quickly. You need them to walk on Mars.',
-    hazard: 'Altered gravity',
+    hazard: 'Gravity fields',
     source: 'NASA HRP muscle risk',
   },
   radiationDose: {
@@ -254,7 +254,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     step: 1,
     how: 'Each day, every crewmate privately answers one question about a teammate: “Do they seem like themselves today?”',
     why: 'People in isolation are poor at noticing their own mood decline. Your crew sees you every day and can notice changes you miss.',
-    hazard: 'Isolation & confinement',
+    hazard: 'Isolation and confinement',
     source: 'NASA HRP behavioral health risk',
   },
 }
