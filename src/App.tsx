@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+﻿import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/orbit/app-shell'
 import { OrbitProvider, useOrbit } from '@/components/orbit/orbit-provider'
 import { ComingSoon } from '@/components/orbit/coming-soon'
@@ -6,16 +6,18 @@ import { ManageCrew } from '@/components/orbit/manage-crew'
 import { SignIn } from '@/components/orbit/sign-in'
 import { SignUp } from '@/components/orbit/sign-up'
 import { TwinView } from '@/components/orbit/twin-view'
+import { FutureSlider } from '@/components/orbit/future-slider'
+import { MissionRoutine } from '@/components/orbit/mission-routine'
 
-/** Every app page sits behind this guard. No session → /login (and come back after signing in). */
+/** Every app page sits behind this guard. No session â†’ /login (and come back after signing in). */
 function RequireSession() {
   const { session, crew, crewDbStatus } = useOrbit()
   const location = useLocation()
   // Signed in as a database astronaut: wait for the crew list before rendering their twin.
   if (session && crewDbStatus === 'loading' && !crew.some((c) => c.id === session.astronautId)) {
-    return <p className="p-8 text-center text-muted-foreground">Loading crew…</p>
+    return <p className="p-8 text-center text-muted-foreground">Loading crewâ€¦</p>
   }
-  // Session points at someone who no longer exists (removed, or database offline) → sign in again.
+  // Session points at someone who no longer exists (removed, or database offline) â†’ sign in again.
   if (session && !crew.some((c) => c.id === session.astronautId)) {
     return <Navigate to="/login" replace />
   }
@@ -33,7 +35,9 @@ export function App() {
           <Route path="/manage-crew" element={<ManageCrew />} />
           <Route element={<RequireSession />}>
             <Route path="/" element={<TwinView />} />
-            {/* Members 3–6: add your routes here, e.g. <Route path="/organ/:organId" element={<OrganPage />} /> */}
+            <Route path="/future" element={<FutureSlider />} />
+            <Route path="/mission" element={<MissionRoutine />} />
+            {/* Members 3â€“6: add your routes here, e.g. <Route path="/organ/:organId" element={<OrganPage />} /> */}
             <Route path="*" element={<ComingSoon />} />
           </Route>
         </Routes>
@@ -41,3 +45,4 @@ export function App() {
     </OrbitProvider>
   )
 }
+
