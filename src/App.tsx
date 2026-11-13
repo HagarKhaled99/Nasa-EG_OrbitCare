@@ -1,9 +1,11 @@
-import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+﻿import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/orbit/app-shell'
 import { OrbitProvider, useOrbit } from '@/components/orbit/orbit-provider'
-import { ComingSoon } from '@/components/orbit/coming-soon'
 import { CheckInPage } from '@/components/orbit/check-in-page'
+import { ComingSoon } from '@/components/orbit/coming-soon'
+import { FutureSlider } from '@/components/orbit/future-slider'
 import { ManageCrew } from '@/components/orbit/manage-crew'
+import { MissionRoutine } from '@/components/orbit/mission-routine'
 import { SignIn } from '@/components/orbit/sign-in'
 import { SignUp } from '@/components/orbit/sign-up'
 import { TwinView } from '@/components/orbit/twin-view'
@@ -37,9 +39,13 @@ export function App() {
           <Route path="/signup" element={<SignUp />} />
           <Route path="/manage-crew" element={<ManageCrew />} />
           <Route element={<RequireSession />}>
+            {/* Member 2 · Twin View */}
             <Route path="/" element={<TwinView />} />
+            {/* Member 4 · Daily check-in */}
             <Route path="/check-in" element={<CheckInPage />} />
-            {/* Members 3–6: add your routes here, e.g. <Route path="/organ/:organId" element={<OrganPage />} /> */}
+            {/* Member 6 · Future Slider + Mission & Routine */}
+            <Route path="/future" element={<FutureSlider />} />
+            <Route path="/mission" element={<MissionRoutine />} />
             <Route path="*" element={<ComingSoon />} />
           </Route>
         </Routes>
