@@ -9,7 +9,7 @@ const selectClass =
   'h-10 rounded-lg border border-input bg-secondary px-3 text-sm font-medium text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none'
 
 export function TopBar() {
-  const { astronaut, crew, env, readiness, setAstronautId, setEnvironmentId } = useOrbit()
+  const { astronaut, env, readiness, setEnvironmentId } = useOrbit()
 
   return (
     <header className="z-30 border-b lg:sticky lg:top-0 border-border bg-background/85 px-4 py-3 backdrop-blur md:px-6 lg:px-8">
@@ -19,21 +19,8 @@ export function TopBar() {
             {astronaut.initials}
           </span>
           <div className="min-w-0">
-            <label htmlFor="astronaut-select" className="sr-only">
-              Astronaut
-            </label>
-            <select
-              id="astronaut-select"
-              value={astronaut.id}
-              onChange={(e) => setAstronautId(e.target.value)}
-              className="-ml-1 max-w-full truncate rounded-md bg-transparent px-1 text-base font-semibold focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-            >
-              {crew.map((member) => (
-                <option key={member.id} value={member.id} className="bg-popover">
-                  {member.name}
-                </option>
-              ))}
-            </select>
+            {/* Locked to the signed-in account (Member 2). To change person, sign out and sign in again. */}
+            <p className="truncate text-base font-semibold">{astronaut.name}</p>
             <p className="text-xs text-muted-foreground">{astronaut.role}</p>
           </div>
         </div>

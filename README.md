@@ -1,53 +1,56 @@
 # ORBIT TWIN — web app
 
-NASA Space Apps 2026 hackathon prototype. Offline-capable tablet app that turns **simulated** wearable
-readings and manual check-ins into a personal health twin for each astronaut.
+NASA Space Apps 2026 hackathon prototype. A tablet app that turns **simulated** wearable readings and manual
+check-ins into a personal health twin for each astronaut. Runs fully on one laptop/tablet, no internet needed.
 **Not a medical device. All data is SYNTHETIC_DEMO.**
 
 ```bash
 npm install
-npm run dev      # website http://localhost:5173 + crew database API http://localhost:4000 (one command)
-npm run dev:web  # website only (sample crew still work; new sign-ups need the database)
-npm run server   # database API only
-npm run build    # type-check + production build
-npm run db       # print the database (astronauts, readings, audit log) as tables. Use a 2nd terminal
+npm run dev            # website http://localhost:5173 + crew server http://localhost:4000 (one command)
+npm run build          # type-check + production build
+npm run db             # print the database (astronauts, readings, audit log). Use a 2nd terminal
 npm run data:generate  # rebuild the 31-day demo dataset (JSON + CSV + database)
+npm run server         # crew server only        npm run dev:web   # website only (nobody can sign in)
 ```
 
-Requires **Node 22.5+** (uses the built-in `node:sqlite`; nothing extra to install).
+Requires **Node 22.5+** (built-in `node:sqlite`; nothing extra to install).
 
-Demo sign-in: pick any of the four sample crew, PIN **2026**.
+**Demo sign-in:** any of the four sample crew, PIN **2026**. Admin PIN for removing profiles: **2026**.
+(The member2 branch used separate PINs per person: 2468 / 1357 / 8642 / 9753. We kept the single demo PIN
+shown on the sign-in screen. Change it with `ORBIT_DEMO_PIN` if the team prefers.)
 
-## Stack
+## How the pieces link together
 
-Vite + React 19 + TypeScript + Tailwind v4 + react-router 7, plus a small Node API with a SQLite
-database (`server/`). Everything runs on the same laptop or tablet, so the demo works with no internet.
+```
+ /login, /signup  ──►  crew server (server/server.mjs)  ──►  SQLite  server/data/orbit-twin.db
+   (Member 1)          checks PIN, sets signed httpOnly         astronauts · readings ·
+                       session cookie (server/session.mjs)      pin_attempts · audit_log
+        │                         │
+        ▼                         ▼
+ OrbitProvider (useOrbit)  ◄──  GET /api/auth/session, /api/astronauts, /api/readings
+   session · crew · readings → health.ts (science engine) → twin.ts (Member 2 snapshot)
+        │
+        ▼
+ Twin View  /  (Member 2)   ·   organ pages, check-in, actions, future, mission (Members 3–6)
+```
 
-### Crew database (`server/`)
-
-| | |
-|---|---|
-| File | `server/data/orbit-twin.db` (created automatically, git-ignored: every teammate has their own) |
-| Tables | `astronauts` (profile + baseline JSON + scrypt PIN hash), `readings` (daily vitals), `sign_in_attempts` (lockout), `audit_log` (create / delete / sign-in events) |
-| `GET /api/astronauts` | list (never returns PIN hashes) |
-| `POST /api/astronauts` | sign-up, validated on the server (ranges, age, weak PINs, duplicate names → 409) |
-| `POST /api/auth/sign-in` | `{ astronautId, pin }` → 200 ok / 401 wrong PIN / 423 locked (5 tries → 60 s) |
-| `GET /api/readings?astronautId=sara` | daily vitals, oldest first |
-| `POST /api/readings` | save one reading (`data_origin`: `MANUAL_CHECKIN` or `SIMULATED_WATCH`), validated |
-| `DELETE /api/astronauts/:id` | `{ pin }`: the astronaut's own PIN or the admin PIN (`ORBIT_ADMIN_PIN`, default `2026`) |
-
-Remove astronauts in the app at **/manage-crew** (link on the sign-in page). The 4 sample crew are built
-into the code (`src/lib/orbit/crew.ts`). They are not in the database, so they always work for the demo.
-To look inside the database, open the `.db` file with *DB Browser for SQLite* or the VS Code "SQLite Viewer" extension.
+- **Sign-in**: the server checks every PIN (sample crew too), locks after 5 wrong tries (60 s) and sets a
+  signed, httpOnly session cookie (12 h). Page scripts cannot read or forge it.
+- **Privacy** (Member 2's rule): you only ever see **your own** twin. No person switcher. The readings API
+  returns 403 for anyone else's data, except for the crew medical officer. Opening `/login` signs the
+  previous person out, so the tablet can be handed over safely.
+- **Database → twin**: the signed-in astronaut's daily readings drive the twin's 30-day trends and today's
+  values. A missing reading stays **Unknown**, never Normal.
+- **Check-in → database**: `submitCheckIn(values)` updates the twin at once and saves a `MANUAL_CHECKIN` row.
 
 ## Who owns what
 
 | Member | Routes | Status |
 |---|---|---|
-| 1 — Sign in / sign up | `/login`, `/signup` | ✅ done (see below) |
-| 2 — Twin View | `/` | base version in place |
-| 3 — Organ pages | `/organ/:organId` (7 organs) | TODO, currently shows *ComingSoon* |
-| 4 — Check-in + data feed | `/check-in` | TODO |
+| 1 — Sign in / sign up (Hagar) | `/login`, `/signup`, `/manage-crew` | ✅ done |
+| 2 — Twin View (Omar) | `/` | ✅ merged from `member2-twin-view`, linked to the database |
+| 3 — Organ pages | `/organ/:organId` (7 organs) | TODO, currently *ComingSoon* |
+| 4 — Check-in + data feed | `/check-in` | TODO: call `submitCheckIn()`; it already saves to the database |
 | 5 — Action Center + Crew Pulse | `/actions`, `/crew` | TODO |
 | 6 — Future Slider + Mission | `/future`, `/mission` | TODO |
 
@@ -57,84 +60,91 @@ Add your routes in `src/App.tsx` **inside** the `<RequireSession>` block, so the
 
 | Field | Meaning |
 |---|---|
-| `astronaut`, `crew` | signed-in person and the whole crew (sample crew + profiles created at sign-up) |
+| `astronaut` | the signed-in person (always the session's owner) |
+| `crew`, `profiles` | everyone who can sign in / astronauts stored in the database |
 | `env`, `setEnvironmentId` | mission environment (ISS / Moon / Mars …) and Earth delay |
 | `indicators`, `organs`, `alerts`, `readiness` | computed twin state (`src/lib/orbit/health.ts`) |
-| `submitCheckIn(values)` | **Member 4**: push new readings; Twin View updates without a refresh |
-| `session` | `{ astronautId, signedInAt, expiresAt }` or `null` |
-| `signIn(id, pin)`, `signOut()`, `createCrewProfile(input)` | auth (Member 1) |
+| `readings`, `readingsStatus` | the signed-in astronaut's database rows; `'database'` or `'built-in'` |
+| `submitCheckIn(values)` | **Member 4**: e.g. `submitCheckIn({ heartRate: 70, systolic: 118 })` |
+| `session`, `sessionStatus` | `{ astronautId, expiresAt }` · `'checking' / 'signed-in' / 'signed-out'` |
+| `signIn(id, pin)`, `signOut()`, `createCrewProfile(input)`, `removeCrewMember(id, pin)` | auth (Member 1) |
 
-Organ IDs (must match everywhere): `brain`, `eyes`, `heart`, `blood`, `muscles`, `bones`, `radiation`.
+Twin snapshot for any page (Member 2): `buildTwinSnapshot({ astronaut, env, indicators, organs, readiness,
+checkedInToday })` from `src/lib/orbit/twin.ts` gives status per organ (`normal / watch / act / unknown`),
+contact chain, environment effects, RIDGE hazards and data sources.
 
-Measured indicator IDs: `heartRate`, `spo2`, `systolic`, `diastolic`, `glucose`, `temperature`, `sleep`,
-`mood`, `exercise`, `grip`, `vision`. Computed: `boneDensity`, `muscleMass`, `radiationDose`, `crewPulse`.
+Organ IDs: `brain`, `eyes`, `heart`, `blood`, `muscles`, `bones`, `radiation`.
+Measured indicators: `heartRate`, `spo2`, `systolic`, `diastolic`, `glucose`, `temperature`, `sleep`, `mood`,
+`exercise`, `grip`, `vision`. Computed: `boneDensity`, `muscleMass`, `radiationDose`, `crewPulse`.
 
-## Demo dataset (SYNTHETIC_DEMO): for Members 3, 4, 5
+## Crew server API (`server/`)
 
-**31 days × 4 sample crew = 124 records**, mission days 184–214, in the plan §5 record format. It is
-**generated, not real astronaut data**, and every record is labelled `SYNTHETIC_DEMO`.
+| Endpoint | |
+|---|---|
+| `POST /api/auth/sign-in` | `{ astronautId, pin }` → 200 + cookie / 401 wrong PIN / 423 locked |
+| `GET /api/auth/session` · `POST /api/auth/sign-out` | who is signed in · end the session |
+| `GET /api/astronauts` · `POST /api/astronauts` | list · sign-up (validated; signs the new astronaut in) |
+| `DELETE /api/astronauts/:id` | `{ pin }`: their own PIN or the admin PIN. Also deletes their readings |
+| `GET /api/readings?astronautId=` | your own readings (crew medical officer: anyone's). 401 / 403 otherwise |
+| `POST /api/readings` | add a reading to **your own** twin (`MANUAL_CHECKIN` or `SIMULATED_WATCH`) |
 
-- In the database: the `readings` table, filled automatically the first time the server starts.
-- As files: `public/data/orbit_twin_demo.json` (with a `metadata` block) and `.csv` (opens in Excel).
-  The app can load the JSON offline at `/data/orbit_twin_demo.json`.
-- Client: `src/lib/orbit/api/readings-api.ts` → `fetchReadings(id)`, `saveReading(reading)`, `fetchDemoDatasetFile()`.
-- Generator: `server/demo-data.mjs`.
+Client: `src/lib/orbit/api/crew-api.ts` and `readings-api.ts`. Tables: `astronauts` (profile, baseline JSON,
+scrypt PIN hash), `readings`, `pin_attempts`, `audit_log`. Open the `.db` with the VS Code "SQLite Viewer"
+extension or run `npm run db`. Settings: `PORT`, `ORBIT_DB_PATH`, `ORBIT_DEMO_PIN`, `ORBIT_ADMIN_PIN`,
+`ORBIT_SESSION_SECRET` (otherwise a random secret is stored in `server/data/`).
+
+## Demo dataset (SYNTHETIC_DEMO)
+
+**31 days × 4 sample crew = 124 records**, mission days 184–214, plan §5 format, every record labelled
+`SYNTHETIC_DEMO`. In the `readings` table (seeded automatically), and as `public/data/orbit_twin_demo.json`
+/ `.csv`. Generator: `server/demo-data.mjs`.
 
 **Recipe:** personal pre-flight baseline (same as `crew.ts`), plus an in-flight sleep offset of −0.2 h
 (ISS actigraphy studies report shorter sleep in flight), plus day-to-day variation (HR SD 2.5 bpm, SpO₂ 0.7 %,
 BP 5/3 mmHg, temperature 0.12 °C, sleep 0.3 h, exercise 6 min; truncated at ±2 SD), kept inside each person's
 normal band (80 % of the app's watch threshold), plus radiation of 1.84 mSv/day ±10 % (Mars transit, Curiosity
-RAD), plus the demo events below. Checked against the app's own alert rules: **0 unplanned alerts**; only these
-events raise Watch/Act:
+RAD), plus the demo events below. Checked against the app's own alert rules: **0 unplanned alerts**.
 
-| Astronaut | Demo event | What it tests |
+| Astronaut | Demo event (day 214) | What the twin shows |
 |---|---|---|
-| Sara | HR 62 → 73 bpm and sleep → 6.2 h over the last 5 days | trend / "watch" status |
-| Ahmed | exercise down ~15 % over 6 days | countermeasure guidance |
-| Lena | 37.9 °C (Act), HR +12 %, mood 3, **SpO₂ missing** on day 214 | missing data must show **UNKNOWN** |
-| Omar | **SpO₂ 88 %** (good signal) on day 214 | emergency / Action Center |
+| Sara | HR 62 → 73 bpm, sleep → 6.2 h over 5 days | heart + brain **Watch** (trend) |
+| Ahmed | exercise down ~15 % over 6 days | muscles + bones **Watch** |
+| Lena (CMO) | 37.9 °C, HR +12 %, mood 3, **SpO₂ missing** | blood **Act**, SpO₂ **Unknown** |
+| Omar | **SpO₂ 88 %** (good signal) | heart **Act** → emergency / Action Center |
 
-> Integration note: the Twin View currently still uses its built-in history in `health.ts`. Member 4 can
-> switch it to `fetchReadings()` in one adapter without changing the pages.
+## Member 1: sign in and sign up
 
-## Member 1 delivery: sign in and sign up
+- `/login`: Sign in / Sign up tabs, recent astronauts first, crew search, PIN pad (touch + keyboard),
+  server lockout with countdown, hand-over sign-out.
+- `/signup`: 3 steps. (1) About you: name, role, date of birth (Day/Month/Year), mission with a "why this
+  mission" card, body figure, PIN twice (weak PINs rejected). (2) Pair devices: watch and dosimeter
+  (simulated), with an honest table of what each device measures. (3) Baseline: 30-night watch average
+  (mean ± SD, synthetic) or manual entry, with input sanity limits and "confirm with your CMO" notes.
+- `/manage-crew`: list and remove database astronauts (their PIN or the admin PIN).
 
-**Front end**
-- `/login`: crew search (name or role; Enter opens the only match), crew list with watch status, 4-digit
-  PIN pad (works with touch and keyboard), lockout countdown, demo-data notice.
-- `/signup`: 3 steps.
-  1. **About you**: name (duplicates rejected), role, date of birth (Day / Month / Year pickers, age 18–80),
-     mission (ISS / Moon / Mars, with gravity, delay, radiation and a "why this mission" note; sets the
-     twin's environment), body figure, PIN + confirmation (rejects `1111`, `1234`, …).
-  2. **Pair devices**: simulated pairing of the watch and the personal dosimeter. A table states honestly
-     what each device measures. Blood pressure comes from a cuff, temperature from a thermometer, and
-     radiation from the dosimeter. The watch measures none of these. Watch SpO₂ is a proposed device design.
-     You can continue without a watch.
-  3. **Your baseline**: import a 30-night pre-flight watch average (mean ± SD, n = 30, synthetic) or
-     type values in. Required: resting HR, SpO₂, sleep, BP systolic/diastolic, temperature. Optional: fasting
-     glucose, grip, near vision. Every value records its source (`watch-preflight` / `manual` / `default` / `plan`).
-- Space-themed auth layout (`auth-split.tsx`), route guard, working sign-out.
+## Member 2: Twin View (merged from `member2-twin-view`)
 
-**Back end**: crew database API in `server/` (see above), plus the client-side pieces below
-- `src/lib/orbit/auth/auth-service.ts`: salted, iterated SHA-256 PIN hashes (never stored in plain text),
-  constant-time compare, 5 tries → 60 s lockout, 12 h sessions. Synchronous and storage-backed so it
-  can later be swapped for a real API with the same function names.
-- `src/lib/orbit/auth/sha256.ts`: pure-JS SHA-256. Works over plain `http://<LAN-IP>`, where `crypto.subtle`
-  is unavailable. Verified against Node's crypto.
-- `src/lib/orbit/api/crew-api.ts`: typed client for the database API.
-- `src/lib/orbit/profiles.ts`: shared profile types, missions, mission → environment mapping.
-- `auth-service.ts` / `sha256.ts`: used for the built-in sample crew (checked locally) and for sessions.
-- `src/lib/orbit/baseline.ts`: baseline fields with input sanity limits (hard) and typical adult ranges
-  (soft "confirm with your CMO" note only), a pulse-pressure cross-check, and the simulated watch import.
+Omar's branch was written for Next.js (`app/api/*`, `next/link`, cookie sessions in route handlers). It was
+merged into this Vite app as follows:
 
-**Scientific notes / honest limits**
-- The twin compares readings with the person's **own** baseline. The reference ranges (AHA/ACC 2017 BP,
-  AHA resting HR, ADA fasting glucose, AASM sleep ≥ 7 h, pulse-oximetry 95–100 %) are only used to check
-  what is typed in, never to diagnose. A fit astronaut with a resting HR of 45 bpm is accepted without a warning.
-- SpO₂ was added as a shared indicator (heart organ). Its thresholds are **DEMO criteria**: watch below about
-  3 % under baseline, act below about 5 % or under 90 %. They need medical validation.
+| From Omar's branch | In this app |
+|---|---|
+| `components/orbit/twin-view.tsx` | `src/components/orbit/twin-view.tsx` (react-router links, `<img>`, shared session) |
+| `lib/orbit/twin.ts` | `src/lib/orbit/twin.ts` (+ SpO₂, glucose meter source) |
+| top bar without person dropdown | `src/components/orbit/top-bar.tsx` |
+| signed httpOnly session cookie, 5-try lockout, "only your own twin", hand-over sign-out | rebuilt in `server/session.mjs` + `server/server.mjs` on the shared SQLite database |
+| `accounts-store.ts` (JSON file in `~/.orbit-twin`), `session-gate.tsx`, `auth-client.ts`, Next route handlers | replaced by the crew database, `RequireSession` and `crew-api.ts` (one sign-in system, not two) |
+| `GET /api/twin`, `GET /api/environments` | the same data comes from `buildTwinSnapshot()` / `allEnvironmentEffects()` in `twin.ts`, computed in the app |
+
+## Scientific notes / honest limits
+- The twin compares readings with the person's **own** baseline. Reference ranges (AHA/ACC 2017 BP, AHA resting
+  HR, ADA fasting glucose, AASM sleep ≥ 7 h, pulse-oximetry 95–100 %) only check what is typed at sign-up.
+- SpO₂ thresholds are **DEMO criteria** (watch ≈ 3 % below baseline, act ≈ 5 % below or under 90 %) and need
+  medical validation. Watch SpO₂ is a proposed device design.
+- Bone/muscle values are illustrative model estimates, not scans. Distance changes who you contact, never
+  how serious a reading is.
 - A 4-digit PIN identifies crew on a shared tablet. It is not internet-grade security.
 
-## Data sources / references
-See the project plan §13: NASA HRP hazards, risks and research pages, the CSA radiation-monitoring article,
-NASA Standard Measures, and NASA OSDR.
+## References
+Project plan §13: NASA HRP hazards, risks and ongoing research; CSA radiation monitoring (26 Feb 2026); CSA
+science in space; NASA Standard Measures; NASA OSDR.

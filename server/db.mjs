@@ -32,8 +32,10 @@ export function openDatabase(path = DB_PATH) {
       created_at           TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS sign_in_attempts (
-      astronaut_id TEXT PRIMARY KEY REFERENCES astronauts(id) ON DELETE CASCADE,
+    -- Wrong-PIN counters for everyone who can sign in (sample crew too, so no foreign key).
+    DROP TABLE IF EXISTS sign_in_attempts;             -- replaced by pin_attempts (v1 had a foreign key)
+    CREATE TABLE IF NOT EXISTS pin_attempts (
+      astronaut_id TEXT PRIMARY KEY,
       failed       INTEGER NOT NULL DEFAULT 0,
       locked_until INTEGER                            -- epoch ms, NULL = not locked
     );

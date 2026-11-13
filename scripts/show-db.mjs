@@ -53,7 +53,9 @@ console.table(
 )
 console.log('\n=== audit_log (latest 20)')
 console.table(db.prepare('SELECT at, action, detail FROM audit_log ORDER BY id DESC LIMIT 20').all())
-const locked = db.prepare('SELECT a.name, s.failed, s.locked_until FROM sign_in_attempts s JOIN astronauts a ON a.id = s.astronaut_id').all()
+const hasTable = (name) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name))
+// pin_attempts is created when the server starts (older databases are upgraded then).
+const locked = hasTable('pin_attempts') ? db.prepare('SELECT astronaut_id, failed, locked_until FROM pin_attempts').all() : []
 if (locked.length) {
   console.log('\n=== failed sign-in attempts')
   console.table(locked)

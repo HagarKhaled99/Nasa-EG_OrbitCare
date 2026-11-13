@@ -1,12 +1,17 @@
 // ORBIT TWIN crew API. Plain Node http + built-in SQLite: no dependencies to install.
 //
 //   GET    /api/health                 → { ok, astronauts }
-//   GET    /api/astronauts             → list of astronauts (public fields only)
-//   POST   /api/astronauts             → create (sign-up). Body: NewCrewProfile. 201 / 400 / 409
-//   POST   /api/auth/sign-in           → { astronautId, pin } → { ok } | 401 wrong-pin | 423 locked
+//   GET    /api/astronauts             → list of signed-up astronauts (public fields only)
+//   POST   /api/astronauts             → create (sign-up) + session cookie. 201 / 400 / 409
 //   DELETE /api/astronauts/:id         → body { pin } (that astronaut's PIN or the admin PIN). 204 / 403 / 404
-//   GET    /api/readings?astronautId=  → daily vitals, oldest first (31 SYNTHETIC_DEMO days for sample crew)
-//   POST   /api/readings               → save one reading (check-in / watch feed). 201 / 400 / 404
+//   POST   /api/auth/sign-in           → { astronautId, pin } → 200 + session cookie | 401 wrong-pin | 423 locked
+//   GET    /api/auth/session           → { session } for the cookie, or 401
+//   POST   /api/auth/sign-out          → clears the cookie. 204
+//   GET    /api/readings?astronautId=  → daily vitals, oldest first. Signed in as that astronaut, or as the
+//                                         crew medical officer. 401 / 403 otherwise
+//   POST   /api/readings               → save one of YOUR readings (check-in / watch feed). 201 / 400 / 401 / 403
+//
+// Sessions: signed httpOnly cookie (server/session.mjs, design by Member 2). Everyone signs in here.
 //
 // Run alone:  node server/server.mjs      (port 4000, or PORT=xxxx)
 // Normally started together with the website by `npm run dev` (see scripts/dev.mjs).
@@ -14,6 +19,7 @@ import { createServer } from 'node:http'
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { openDatabase, toPublic, DB_PATH } from './db.mjs'
+import { clearedSessionCookie, createSessions, loadSecret, readCookie, sessionCookie } from './session.mjs'
 import { DEMO_ORIGIN, READING_COLUMNS, seedDemoReadings } from './demo-data.mjs'
 
 export const API_PORT = Number(process.env.PORT ?? 4000)
@@ -27,7 +33,16 @@ const LOCKOUT_MS = 60_000
 const ROLES = ['Commander', 'Flight Engineer', 'Mission Specialist', 'Crew Medical Officer']
 const MISSION_IDS = ['ares-iv', 'artemis', 'iss']
 const SAMPLE_CREW_NAMES = ['sara haddad', 'ahmed nasser', 'lena fischer', 'omar rahimi']
-const SAMPLE_CREW_IDS = ['sara', 'ahmed', 'lena', 'omar']
+/** Built-in sample crew (src/lib/orbit/crew.ts). They sign in with the shared demo PIN. */
+const SAMPLE_CREW = [
+  { id: 'sara', role: 'Mission Specialist' },
+  { id: 'ahmed', role: 'Flight Engineer' },
+  { id: 'lena', role: 'Crew Medical Officer' },
+  { id: 'omar', role: 'Commander' },
+]
+const SAMPLE_CREW_IDS = SAMPLE_CREW.map((c) => c.id)
+const DEMO_PIN = process.env.ORBIT_DEMO_PIN ?? '2026'
+const CMO_ROLE = 'Crew Medical Officer'
 /** Plausible ranges for incoming readings (wider than baseline limits: these may be abnormal, just not impossible). */
 const READING_LIMITS = {
   heart_rate_bpm: [25, 220],
@@ -131,7 +146,11 @@ function pinMatches(pin, hash, salt) {
 
 // ---------- API ----------
 
-export function createApi(db = openDatabase()) {
+export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
+  const sessions = createSessions(loadSecret(dbPath))
+  const demoSalt = randomBytes(16).toString('hex')
+  const demoHash = hashPin(DEMO_PIN, demoSalt)
+
   // First start (or empty table): load the 31-day SYNTHETIC_DEMO dataset so every teammate has data.
   const demoCount = db.prepare('SELECT COUNT(*) AS n FROM readings WHERE data_origin = ?').get(DEMO_ORIGIN).n
   if (demoCount === 0) seedDemoReadings(db)
@@ -152,13 +171,40 @@ export function createApi(db = openDatabase()) {
     remove: db.prepare('DELETE FROM astronauts WHERE id = ?'),
     removeReadings: db.prepare('DELETE FROM readings WHERE astronaut_id = ?'),
     count: db.prepare('SELECT COUNT(*) AS n FROM astronauts'),
-    attempts: db.prepare('SELECT failed, locked_until FROM sign_in_attempts WHERE astronaut_id = ?'),
-    setAttempts: db.prepare(`INSERT INTO sign_in_attempts (astronaut_id, failed, locked_until) VALUES (?, ?, ?)
+    attempts: db.prepare('SELECT failed, locked_until FROM pin_attempts WHERE astronaut_id = ?'),
+    setAttempts: db.prepare(`INSERT INTO pin_attempts (astronaut_id, failed, locked_until) VALUES (?, ?, ?)
       ON CONFLICT(astronaut_id) DO UPDATE SET failed = excluded.failed, locked_until = excluded.locked_until`),
-    clearAttempts: db.prepare('DELETE FROM sign_in_attempts WHERE astronaut_id = ?'),
+    clearAttempts: db.prepare('DELETE FROM pin_attempts WHERE astronaut_id = ?'),
     audit: db.prepare('INSERT INTO audit_log (at, action, astronaut_id, detail) VALUES (?, ?, ?, ?)'),
   }
   const audit = (action, astronautId, detail = null) => q.audit.run(new Date().toISOString(), action, astronautId, detail)
+
+  /** Who can sign in: a sample crew member or a signed-up astronaut, with their PIN credential. */
+  function account(id) {
+    const sample = SAMPLE_CREW.find((c) => c.id === id)
+    if (sample) return { id, role: sample.role, pinHash: demoHash, pinSalt: demoSalt, sample: true }
+    const row = q.get.get(id)
+    return row ? { id, role: row.role, pinHash: row.pin_hash, pinSalt: row.pin_salt, sample: false } : null
+  }
+
+  /** The signed-in account for this request (valid cookie AND the account still exists), or null. */
+  function currentSession(req) {
+    const s = sessions.read(readCookie(req))
+    if (!s) return null
+    const acc = account(s.astronautId)
+    return acc ? { ...s, role: acc.role } : null
+  }
+
+  function requireSession(req) {
+    const s = currentSession(req)
+    if (!s) throw new HttpError(401, 'Sign in first.')
+    return s
+  }
+
+  function startSession(astronautId) {
+    const { token, session } = sessions.create(astronautId)
+    return { session, cookie: sessionCookie(token) }
+  }
 
   const routes = {
     'GET /api/health': () => ({ status: 200, body: { ok: true, astronauts: q.count.get().n } }),
@@ -186,11 +232,12 @@ export function createApi(db = openDatabase()) {
         new Date().toISOString(),
       )
       audit('create', id, input.name)
-      return { status: 201, body: toPublic(q.get.get(id)) }
+      const { session, cookie } = startSession(id)
+      return { status: 201, body: { ...toPublic(q.get.get(id)), session }, cookie }
     },
 
     'POST /api/auth/sign-in': ({ body }) => {
-      const row = q.get.get(String(body?.astronautId ?? ''))
+      const row = account(String(body?.astronautId ?? ''))
       if (!row) throw new HttpError(404, 'Unknown astronaut')
       const now = Date.now()
       const state = q.attempts.get(row.id) ?? { failed: 0, locked_until: null }
@@ -198,10 +245,11 @@ export function createApi(db = openDatabase()) {
         return { status: 423, body: { ok: false, reason: 'locked', lockedUntil: state.locked_until } }
       }
       const failedSoFar = state.locked_until ? 0 : state.failed // lock expired → fresh start
-      if (pinMatches(body?.pin, row.pin_hash, row.pin_salt)) {
+      if (pinMatches(body?.pin, row.pinHash, row.pinSalt)) {
         q.clearAttempts.run(row.id)
         audit('sign-in-ok', row.id)
-        return { status: 200, body: { ok: true } }
+        const { session, cookie } = startSession(row.id)
+        return { status: 200, body: { ok: true, session }, cookie }
       }
       const failed = failedSoFar + 1
       if (failed >= MAX_ATTEMPTS) {
@@ -215,15 +263,34 @@ export function createApi(db = openDatabase()) {
       return { status: 401, body: { ok: false, reason: 'wrong-pin', attemptsLeft: MAX_ATTEMPTS - failed } }
     },
 
-    'GET /api/readings': ({ query }) => {
+    'GET /api/auth/session': ({ req }) => {
+      const s = currentSession(req)
+      if (!s) return { status: 401, body: { error: 'Not signed in' }, cookie: clearedSessionCookie() }
+      return { status: 200, body: { session: { astronautId: s.astronautId, expiresAt: s.expiresAt } } }
+    },
+
+    'POST /api/auth/sign-out': ({ req }) => {
+      const s = currentSession(req)
+      if (s) audit('sign-out', s.astronautId)
+      return { status: 204, body: null, cookie: clearedSessionCookie() }
+    },
+
+    'GET /api/readings': ({ query, req }) => {
+      const me = requireSession(req)
       const id = query.get('astronautId') ?? ''
       if (!id) throw new HttpError(400, 'astronautId query parameter is required')
+      // Privacy: only your own readings, unless you are the crew medical officer.
+      if (id !== me.astronautId && me.role !== CMO_ROLE) {
+        throw new HttpError(403, 'You can only open your own readings.')
+      }
       return { status: 200, body: q.readings.all(id) }
     },
 
-    'POST /api/readings': ({ body }) => {
+    'POST /api/readings': ({ body, req }) => {
+      const me = requireSession(req)
       const id = String(body?.astronaut_id ?? '')
       if (!SAMPLE_CREW_IDS.includes(id) && !q.get.get(id)) throw new HttpError(404, 'Unknown astronaut')
+      if (id !== me.astronautId) throw new HttpError(403, 'You can only add readings to your own twin.')
       const errors = []
       if (!Number.isInteger(body?.mission_day) || body.mission_day < 0 || body.mission_day > 2000) errors.push('mission_day: integer 0–2000')
       if (!READING_ORIGINS.includes(body?.data_origin)) errors.push(`data_origin: one of ${READING_ORIGINS.join(', ')}`)
@@ -248,7 +315,7 @@ export function createApi(db = openDatabase()) {
       return { status: 201, body: q.readingById.get(info.lastInsertRowid) }
     },
 
-    'DELETE /api/astronauts/:id': ({ params, body }) => {
+    'DELETE /api/astronauts/:id': ({ params, body, req }) => {
       const row = q.get.get(params.id)
       if (!row) throw new HttpError(404, 'Astronaut not found')
       const byOwner = pinMatches(body?.pin, row.pin_hash, row.pin_salt)
@@ -256,17 +323,17 @@ export function createApi(db = openDatabase()) {
       if (!byOwner && !byAdmin) throw new HttpError(403, 'PIN not accepted. Use this astronaut’s PIN or the admin PIN.')
       q.remove.run(row.id)
       q.removeReadings.run(row.id)
+      q.clearAttempts.run(row.id)
       audit('delete', row.id, `${row.name} (by ${byOwner ? 'owner' : 'admin'})`)
-      return { status: 204, body: null }
+      // Removing the person who is signed in on this tablet ends their session.
+      const me = sessions.read(readCookie(req))
+      return { status: 204, body: null, cookie: me?.astronautId === row.id ? clearedSessionCookie() : undefined }
     },
   }
 
+  // No CORS headers on purpose: the website reaches the API through the Vite proxy (same origin),
+  // so the session cookie is never offered to other sites.
   return async function handle(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*')
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS')
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-    if (req.method === 'OPTIONS') return send(res, 204, null)
-
     const url = new URL(req.url ?? '/', 'http://localhost')
     let key = `${req.method} ${url.pathname}`
     const params = {}
@@ -280,7 +347,8 @@ export function createApi(db = openDatabase()) {
 
     try {
       const body = req.method === 'POST' || req.method === 'DELETE' ? await readJson(req) : undefined
-      const result = route({ body, params, query: url.searchParams })
+      const result = route({ body, params, query: url.searchParams, req })
+      if (result.cookie) res.setHeader('Set-Cookie', result.cookie)
       send(res, result.status, result.body)
     } catch (error) {
       if (error instanceof HttpError) return send(res, error.status, { error: error.message, ...error.extra })

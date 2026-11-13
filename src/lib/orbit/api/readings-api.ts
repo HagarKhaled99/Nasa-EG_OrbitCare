@@ -2,13 +2,15 @@
  * Daily vitals in the crew database (`readings` table). For Member 4 (check-in + data feed) and the
  * chart / organ pages. Record format = project plan §5.
  *
- *   const history = await fetchReadings('sara')          // 31 SYNTHETIC_DEMO days, oldest first
+ *   const history = await fetchReadings('sara')          // 31 SYNTHETIC_DEMO days, oldest first (needs sign-in)
  *   await saveReading({ astronaut_id: 'sara', mission_day: 214, heart_rate_bpm: 70,
  *                       data_origin: 'MANUAL_CHECKIN', sensor_mode: 'manual' })
  *
  * A `null` measurement means MISSING. Show it as UNKNOWN, never as normal.
  * Without the server, the same demo data is available as a static file: `/data/orbit_twin_demo.json`.
  */
+import type { ReadingHistory } from '../health'
+import type { MeasuredIndicatorId } from '../indicators'
 import { ApiError, ApiUnavailableError } from './crew-api'
 
 export type DataOrigin = 'SYNTHETIC_DEMO' | 'SIMULATED_WATCH' | 'MANUAL_CHECKIN'
@@ -83,4 +85,42 @@ export async function fetchDemoDatasetFile(): Promise<{ metadata: unknown; recor
   const res = await fetch('/data/orbit_twin_demo.json')
   if (!res.ok) throw new Error('Demo dataset file not found')
   return res.json()
+}
+
+// ---------- database rows → twin history ----------
+
+/** Which reading column feeds which twin indicator. */
+const COLUMN_TO_INDICATOR = {
+  heart_rate_bpm: 'heartRate',
+  spo2_pct: 'spo2',
+  blood_pressure_systolic_mmhg: 'systolic',
+  blood_pressure_diastolic_mmhg: 'diastolic',
+  temperature_c: 'temperature',
+  sleep_hours: 'sleep',
+  mood_1_to_5: 'mood',
+  activity_min: 'exercise',
+} as const satisfies Partial<Record<keyof Reading, MeasuredIndicatorId>>
+
+/**
+ * Turn database rows into one value per mission day per indicator, for `computeIndicators({ readings })`.
+ * Rows are ordered oldest first, so for the same day a later row (e.g. today's manual check-in) wins.
+ * A day whose LATEST row has no value for a column (sensor gave no signal) stays `null` → UNKNOWN on the twin.
+ */
+export function toReadingHistory(rows: Reading[]): ReadingHistory {
+  const byIndicator = new Map<MeasuredIndicatorId, Map<number, number | null>>()
+  for (const row of rows) {
+    for (const [column, indicator] of Object.entries(COLUMN_TO_INDICATOR) as Array<[keyof Reading, MeasuredIndicatorId]>) {
+      const value = row[column] as number | null
+      const days = byIndicator.get(indicator) ?? new Map<number, number | null>()
+      // A later row without this measurement does not erase an earlier same-day value (a check-in may only
+      // contain blood pressure); but the demo "no signal" row is the only row that day, so it stays null.
+      if (value !== null || !days.has(row.mission_day)) days.set(row.mission_day, value)
+      byIndicator.set(indicator, days)
+    }
+  }
+  const history: ReadingHistory = {}
+  for (const [indicator, days] of byIndicator) {
+    history[indicator] = [...days.entries()].sort((a, b) => a[0] - b[0]).map(([day, value]) => ({ day, value }))
+  }
+  return history
 }

@@ -9,13 +9,17 @@ import { TwinView } from '@/components/orbit/twin-view'
 
 /** Every app page sits behind this guard. No session → /login (and come back after signing in). */
 function RequireSession() {
-  const { session, crew, crewDbStatus } = useOrbit()
+  const { session, sessionStatus, crew, crewDbStatus } = useOrbit()
   const location = useLocation()
-  // Signed in as a database astronaut: wait for the crew list before rendering their twin.
-  if (session && crewDbStatus === 'loading' && !crew.some((c) => c.id === session.astronautId)) {
-    return <p className="p-8 text-center text-muted-foreground">Loading crew…</p>
+  // Asking the server who is signed in (the session cookie is invisible to page scripts).
+  if (sessionStatus === 'checking' || (session && crewDbStatus === 'loading')) {
+    return (
+      <p role="status" className="p-8 text-center font-mono text-xs tracking-[0.2em] text-muted-foreground uppercase">
+        Checking your sign-in…
+      </p>
+    )
   }
-  // Session points at someone who no longer exists (removed, or database offline) → sign in again.
+  // Session points at someone who is not in the crew list (e.g. just removed) → sign in again.
   if (session && !crew.some((c) => c.id === session.astronautId)) {
     return <Navigate to="/login" replace />
   }

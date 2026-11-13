@@ -151,25 +151,48 @@ function describe(meta: IndicatorMeta, deviation: number, status: Status, daysOf
   return `${pct}% ${direction} your normal${duration}.`
 }
 
+/**
+ * Measured history from the crew database (`readings` table), one point per mission day.
+ * `value: null` = the sensor gave no valid reading that day (kept as NaN so it shows as UNKNOWN, never normal).
+ */
+export type ReadingHistory = Partial<Record<MeasuredIndicatorId, Array<{ day: number; value: number | null }>>>
+
 export interface TwinInput {
   astronaut: Astronaut
   env: MissionEnvironment
   overrides: Partial<Record<MeasuredIndicatorId, number>>
   votes: CrewVote[]
+  /** Database readings. When present for an indicator they replace the built-in generated history. */
+  readings?: ReadingHistory
+}
+
+function historyFromReadings(points: Array<{ day: number; value: number | null }>, todayOverride?: number): Point[] {
+  const history = points
+    .slice(-HISTORY_DAYS)
+    .map((p) => ({ day: p.day, value: p.value === null ? Number.NaN : p.value }))
+  if (todayOverride !== undefined) {
+    const last = history[history.length - 1]
+    if (last && last.day === MISSION_DAY) history[history.length - 1] = { day: MISSION_DAY, value: todayOverride }
+    else history.push({ day: MISSION_DAY, value: todayOverride })
+  }
+  return history
 }
 
 export function computeIndicators(input: TwinInput): Record<IndicatorId, IndicatorState> {
-  const { astronaut, env, overrides, votes } = input
+  const { astronaut, env, overrides, votes, readings } = input
   const result = {} as Record<IndicatorId, IndicatorState>
   const measuredIds = Object.keys(astronaut.baseline) as MeasuredIndicatorId[]
 
   for (const id of measuredIds) {
     const meta = INDICATORS[id]
     const baseline = astronaut.baseline[id]
-    const history = measuredHistory(astronaut, id, overrides[id])
+    const fromDb = readings?.[id]
+    const history =
+      fromDb && fromDb.length > 0 ? historyFromReadings(fromDb, overrides[id]) : measuredHistory(astronaut, id, overrides[id])
     const value = history[history.length - 1].value
     const { deviation, status } = deviationStatus(value, baseline, meta)
     const daysOff = countDaysOff(history, baseline, meta)
+    const missing = !Number.isFinite(value)
     result[id] = {
       id,
       meta,
@@ -179,13 +202,13 @@ export function computeIndicators(input: TwinInput): Record<IndicatorId, Indicat
       status,
       history,
       daysOff,
-      message: describe(meta, deviation, status, daysOff),
+      message: missing ? 'No valid reading today. Measure again.' : describe(meta, deviation, status, daysOff),
     }
   }
 
   const exerciseHistory = result.exercise.history
-  const avgExercise =
-    exerciseHistory.reduce((sum, p) => sum + p.value, 0) / exerciseHistory.length
+  const exerciseValues = exerciseHistory.map((p) => p.value).filter(Number.isFinite)
+  const avgExercise = exerciseValues.reduce((sum, v) => sum + v, 0) / Math.max(1, exerciseValues.length)
   const exerciseRatio = avgExercise / EXERCISE_PLAN_MINUTES
 
   const computedSeries: Array<[IndicatorId, (day: number) => number]> = [

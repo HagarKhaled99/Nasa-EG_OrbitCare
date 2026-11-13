@@ -102,8 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           onClick={() => {
-            signOut()
-            navigate('/login')
+            void signOut().then(() => navigate('/login'))
           }}
           className="m-3 mt-2 flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
