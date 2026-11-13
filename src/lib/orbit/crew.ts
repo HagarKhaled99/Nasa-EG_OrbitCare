@@ -83,10 +83,7 @@ export const CREW: Astronaut[] = [
       grip: 46,
       vision: 10,
     },
-    drift: {
-      exercise: { pct: -0.15, days: 6 },
-      grip: { pct: -0.12, days: 5 },
-    },
+    drift: {},
     today: { mood: 4 },
     crewVotes: [
       { fromId: 'sara', seemsLikeThemselves: true },
@@ -117,11 +114,8 @@ export const CREW: Astronaut[] = [
       grip: 32,
       vision: 10,
     },
-    drift: {
-      temperature: { pct: 0.032, days: 2 },
-      heartRate: { pct: 0.12, days: 2 },
-    },
-    today: { temperature: 37.9, mood: 3 },
+    drift: {},
+    today: { mood: 5 },
     crewVotes: [
       { fromId: 'sara', seemsLikeThemselves: true },
       { fromId: 'ahmed', seemsLikeThemselves: false },

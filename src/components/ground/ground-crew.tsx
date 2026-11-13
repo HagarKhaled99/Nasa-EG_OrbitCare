@@ -51,6 +51,37 @@ export function GroundCrew() {
         </Button>
       </div>
 
+      {!isSurgeon && (
+        <section aria-labelledby="role-title" className="rounded-2xl border border-primary/30 bg-primary/5 p-5">
+          <h2 id="role-title" className="font-semibold">
+            Your role: Mission Director
+          </h2>
+          <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-sm leading-relaxed">
+            <li>You plan the mission: who does which task today (spacewalks, robotics, docking, experiments).</li>
+            <li>
+              The flight surgeon tells you each astronaut&apos;s <span className="font-medium">fitness for duty</span>: Ready,
+              Limited (with restrictions such as “No EVA”) or Not ready.
+            </li>
+            <li>
+              You never see the medical reason. That keeps the crew honest about symptoms, which keeps them safe.
+            </li>
+            <li>When someone is Limited or Not ready, open them to see which crewmates are free to take over.</li>
+          </ul>
+          {crew && (
+            <p className="mt-3 flex flex-wrap gap-2 text-sm">
+              {(['ready', 'limited', 'not-ready'] as const).map((st) => (
+                <span key={st} className={cn('rounded-full border px-3 py-1 font-medium', FITNESS_STYLE[st].tone)}>
+                  {FITNESS_LABEL[st]}: {crew.filter((c) => c.fitness?.status === st).length}
+                </span>
+              ))}
+              <span className="rounded-full border border-dashed border-border px-3 py-1 text-muted-foreground">
+                No decision yet: {crew.filter((c) => !c.fitness).length}
+              </span>
+            </p>
+          )}
+        </section>
+      )}
+
       {error && (
         <p role="alert" className="rounded-xl border border-status-act/40 bg-status-act/10 p-3 text-sm">
           {error}

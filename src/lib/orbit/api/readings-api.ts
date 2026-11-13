@@ -126,7 +126,7 @@ export function toReadingHistory(rows: Reading[]): ReadingHistory {
   const byIndicator = new Map<MeasuredIndicatorId, Map<number, number | null>>()
   for (const row of rows) {
     for (const [column, indicator] of Object.entries(COLUMN_TO_INDICATOR) as Array<[keyof Reading, MeasuredIndicatorId]>) {
-      const value = row[column] as number | null
+      const value = (row[column] ?? null) as number | null // absent field = not measured
       const days = byIndicator.get(indicator) ?? new Map<number, number | null>()
       // A later row without this measurement does not erase an earlier same-day value (a check-in may only
       // contain blood pressure); but the demo "no signal" row is the only row that day, so it stays null.
@@ -136,6 +136,9 @@ export function toReadingHistory(rows: Reading[]): ReadingHistory {
   }
   const history: ReadingHistory = {}
   for (const [indicator, days] of byIndicator) {
+    // Never measured in the database at all (e.g. grip in the demo rows): leave it out, so the twin uses its
+    // other source instead of calling it Unknown. A missing value on a day that HAS readings stays missing.
+    if ([...days.values()].every((v) => v === null)) continue
     history[indicator] = [...days.entries()].sort((a, b) => a[0] - b[0]).map(([day, value]) => ({ day, value }))
   }
   return history

@@ -155,7 +155,7 @@ extension or run `npm run db`. Settings: `PORT`, `ORBIT_DB_PATH`, `ORBIT_DEMO_PI
 
 ## Demo dataset (SYNTHETIC_DEMO)
 
-**31 days × 4 sample crew = 124 records**, mission days 184–214, plan §5 format, every record labelled
+**31 days × 4 sample crew = 124 records** (the plan's three demo cases: Sara's gradual change, Omar's low SpO₂, Lena's missing SpO₂; Ahmed healthy), mission days 184–214, plan §5 format, every record labelled
 `SYNTHETIC_DEMO`. In the `readings` table (seeded automatically), and as `public/data/orbit_twin_demo.json`
 / `.csv`. Generator: `server/demo-data.mjs`.
 
@@ -168,8 +168,8 @@ RAD), plus the demo events below. Checked against the app's own alert rules: **0
 | Astronaut | Demo event (day 214) | What the twin shows |
 |---|---|---|
 | Sara | HR 62 → 73 bpm, sleep → 6.2 h over 5 days | heart + brain **Watch** (trend) |
-| Ahmed | exercise down ~15 % over 6 days | muscles + bones **Watch** |
-| Lena (CMO) | 37.9 °C, HR +12 %, mood 3, **SpO₂ missing** | blood **Act**, SpO₂ **Unknown** |
+| Ahmed | healthy all month | all **Normal** |
+| Lena (CMO) | healthy, but **SpO₂ missing** on day 214 (no signal) | heart **Unknown**, never Normal |
 | Omar | starts **healthy**; the emergency (SpO₂ 87 %, good signal) is **injected live** with the Demo button | heart **Act** → full-screen alert / Action Center |
 
 ## Member 1: sign in and sign up

@@ -44,13 +44,15 @@ export function GroundAstronaut() {
   const { astronautId = '' } = useParams()
   const { isSurgeon } = useGround()
   const [row, setRow] = useState<GroundCrewRow | null>(null)
+  const [crew, setCrew] = useState<GroundCrewRow[]>([])
   const [history, setHistory] = useState<FitnessDecision[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const loadBasics = useCallback(async () => {
     try {
-      const crew = await fetchGroundCrew()
-      setRow(crew.find((c) => c.id === astronautId) ?? null)
+      const all = await fetchGroundCrew()
+      setCrew(all)
+      setRow(all.find((c) => c.id === astronautId) ?? null)
       setHistory(await fetchFitnessHistory(astronautId))
       setError(null)
     } catch (e) {
@@ -103,11 +105,7 @@ export function GroundAstronaut() {
       {isSurgeon ? (
         <SurgeonFile row={row} onDecided={loadBasics} />
       ) : (
-        <p className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-card p-4 text-sm text-muted-foreground">
-          <Lock className="size-4" aria-hidden />
-          Medical details, report packets and advice are between {row.name.split(' ')[0]} and the flight surgeon. You see
-          fitness for duty and restrictions only.
-        </p>
+        <DirectorPlanning row={row} crew={crew} />
       )}
 
       <section aria-labelledby="history-title" className="rounded-2xl border border-border bg-card p-5">
@@ -133,6 +131,56 @@ export function GroundAstronaut() {
           </ul>
         )}
       </section>
+    </div>
+  )
+}
+
+/** Mission director: what the fitness decision means for planning, and who can take over. No medical data. */
+function DirectorPlanning({ row, crew }: { row: GroundCrewRow; crew: GroundCrewRow[] }) {
+  const first = row.name.split(' ')[0]
+  const status = row.fitness?.status ?? null
+  const available = crew.filter((c) => c.id !== row.id && c.fitness?.status !== 'limited' && c.fitness?.status !== 'not-ready')
+  const meaning =
+    status === 'not-ready'
+      ? `${first} should not be scheduled for mission tasks until the flight surgeon clears them.`
+      : status === 'limited'
+        ? `${first} can work, but not on: ${row.fitness?.restrictions ?? 'the restricted tasks'}. Move those tasks to a crewmate below.`
+        : status === 'ready'
+          ? `${first} is cleared for all planned tasks.`
+          : `The flight surgeon has not made a decision for ${first} today. Plan as usual and check again later.`
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <section aria-labelledby="planning-title" className="rounded-2xl border border-border bg-card p-5">
+        <h2 id="planning-title" className="font-semibold">
+          What this means for the mission
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed">{meaning}</p>
+        {(status === 'limited' || status === 'not-ready') && (
+          <div className="mt-3">
+            <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Free to take over</p>
+            {available.length === 0 ? (
+              <p className="mt-1 text-sm text-muted-foreground">No other crewmate is free. Talk to the flight surgeon.</p>
+            ) : (
+              <ul className="mt-2 flex flex-col gap-1 text-sm">
+                {available.map((c) => (
+                  <li key={c.id} className="flex items-center justify-between gap-2 rounded-lg bg-secondary/60 px-3 py-2">
+                    <span>
+                      {c.name} · <span className="text-muted-foreground">{c.role}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">{c.fitness ? FITNESS_LABEL[c.fitness.status] : 'no restrictions'}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
+      <p className="flex items-start gap-2 rounded-2xl border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
+        <Lock className="mt-0.5 size-4 shrink-0" aria-hidden />
+        Medical details, report packets and advice stay between {first} and the flight surgeon. You see fitness for duty
+        and restrictions only, so the crew can report symptoms without fear of being judged by management.
+      </p>
     </div>
   )
 }

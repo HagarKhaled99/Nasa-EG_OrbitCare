@@ -63,8 +63,16 @@ export function run(t: T) {
   const sara = twin(crew('sara')).snap
   t('Sara: heart rate 73 → Watch (trend demo)', ind(sara, 'heart', 'heartRate').value === 73 && ind(sara, 'heart', 'heartRate').status === 'watch')
   const lena = twin(crew('lena')).snap
-  t('Lena: fever 37.9 °C → Act', ind(lena, 'blood', 'temperature').status === 'act')
   t('Lena: missing SpO₂ → Unknown, never normal', ind(lena, 'heart', 'spo2').status === 'unknown' && ind(lena, 'heart', 'spo2').value === null)
+  // The plan's story (§4): only Sara is flagged at the start, Lena has one missing reading, Ahmed and Omar healthy.
+  const flagged = (id: string) => twin(crew(id)).snap.organs.filter((o) => o.status !== 'normal').map((o) => `${o.id}:${o.status}`)
+  t('start: Sara only heart + brain Watch', flagged('sara').sort().join() === 'brain:watch,heart:watch', flagged('sara'))
+  t('start: Ahmed all normal', flagged('ahmed').length === 0, flagged('ahmed'))
+  t('start: Lena only heart Unknown (missing SpO₂)', flagged('lena').join() === 'heart:unknown', flagged('lena'))
+  t('start: Omar all normal', flagged('omar').length === 0, flagged('omar'))
+  const dbShaped = rowsFor('ahmed').map((r) => ({ glucose_mg_dl: null, grip_kg: null, vision_lines: null, ...r }))
+  const fromDb = computeIndicators({ astronaut: crew('ahmed'), env: getEnvironment('iss'), overrides: {}, votes: [], readings: toReadingHistory(dbShaped as Reading[]) })
+  t('columns never measured in the database do not become Unknown', [fromDb.grip, fromDb.vision, fromDb.glucose].every((i) => Number.isFinite(i.value)))
   const omar = twin(crew('omar')).snap
   t('Omar starts healthy (heart normal)', card(omar, 'heart').status === 'normal', card(omar, 'heart').status)
   const omarEmergency = twin(crew('omar'), { extra: [injected('omar', { spo2_pct: 87 })] }).snap

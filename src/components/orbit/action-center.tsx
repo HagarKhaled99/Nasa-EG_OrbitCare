@@ -288,6 +288,21 @@ function EmergencyBanner({ alert, actions }: { alert: OrganState; actions: Actio
     })
     .filter((x) => x.last)
 
+  // Once acknowledged, the banner shrinks to one line; the numbered steps stay in the alert card below.
+  if (ackAt) {
+    return (
+      <section
+        aria-label={`${alert.organ.name}: acknowledged`}
+        className="flex flex-wrap items-center gap-3 rounded-2xl border border-status-act/40 bg-status-act/5 px-5 py-3 text-sm"
+      >
+        <Siren className="size-4 shrink-0 text-status-act" aria-hidden />
+        <span className="font-semibold">{alert.organ.name}: Act</span>
+        <span className="text-muted-foreground">Acknowledged at {time(ackAt)} · follow the steps below</span>
+        <NotifyButton alertKey={alertKey} recipient="Crew medical officer" actions={actions} className="ml-auto h-9" />
+      </section>
+    )
+  }
+
   return (
     <section
       role="alert"
