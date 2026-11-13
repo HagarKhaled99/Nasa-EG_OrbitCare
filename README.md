@@ -266,7 +266,7 @@ and mood reminders now use real data. The Future Slider uses `recharts` (run `np
 | Blood sugar, grip, vision only on the tablet | Stored in the database |
 | Fixed streak; Crew Pulse teammate always Sara | Streak counted from real check-ins for signed-up astronauts; Crew Pulse teammate chosen per person |
 | No sign-out on phones | Sign-out button in the top bar on small screens |
-| Tests only on one laptop | `npm test` (105 checks) |
+| Tests only on one laptop | `npm test` (109 checks) |
 
 ## Validation: do the alerts come at the right time? (`/validation`)
 Open **http://localhost:5173/validation** (no sign-in; link on the sign-in page). Code: `src/lib/orbit/validation.ts`.
@@ -290,6 +290,9 @@ Limits: simulated people, not clinical proof; blood pressure still gives ~1.5 fa
 average two cuff readings). Not AI: fixed, explainable rules; the test only measures them.
 
 ## Scientific notes / honest limits
+- The live watch sends a packet every 5 s, but the twin uses the **1-minute average of good packets** (at least 6,
+  `liveAverage` in `sensor-adapter.ts`). Before this fix, one noisy packet (Sara 73 → 75 bpm) crossed the Act line
+  and opened the emergency screen by itself.
 - The twin compares readings with the person's **own** baseline. Reference ranges (AHA/ACC 2017 BP, AHA resting
   HR, ADA fasting glucose, AASM sleep ≥ 7 h, pulse-oximetry 95–100 %) only check what is typed at sign-up.
 - SpO₂ thresholds are **DEMO criteria** (watch ≈ 3 % below baseline, act ≈ 5 % below or under 90 %) and need

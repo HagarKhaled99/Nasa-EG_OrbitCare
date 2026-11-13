@@ -14,6 +14,10 @@
 export const WATCH_POLL_MS = 5000
 /** No good sample for this long → the live value is marked stale. */
 export const WATCH_STALE_MS = 30_000
+/** The twin uses the average of the good packets from the last minute, never one 5-second packet. */
+export const WATCH_AVERAGE_MS = 60_000
+/** Fewer good packets than this in that minute → no live value yet (the twin keeps today's stored reading). */
+export const WATCH_MIN_PACKETS = 6
 
 export type SampleQuality = 'good' | 'motion' | 'no-signal'
 
@@ -54,7 +58,27 @@ export function nextWatchSample(centre: WatchCentre, now = Date.now(), rand: () 
   return { at: now, heartRate, spo2, heartRateQuality, spo2Quality }
 }
 
-/** Latest sample whose quality is good, per measurement (what the twin is allowed to use). */
+/**
+ * What the twin is allowed to use: the AVERAGE of the good packets from the last minute (at least 6 packets).
+ * One 5-second packet is too noisy to raise an emergency on its own: a heart rate of 73 ± 2 must not flip to
+ * Act just because one packet read 75. A real change (or a demo injection) moves the whole average.
+ */
+export function liveAverage(samples: WatchSample[]) {
+  const newest = samples[samples.length - 1]?.at ?? 0
+  const recent = samples.filter((s) => newest - s.at <= WATCH_AVERAGE_MS)
+  const avg = (pick: (s: WatchSample) => number | null, ok: (s: WatchSample) => boolean) => {
+    const good = recent.filter(ok).map(pick).filter((v): v is number => v !== null)
+    if (good.length < WATCH_MIN_PACKETS) return null
+    const at = [...recent].reverse().find(ok)!.at
+    return { value: Math.round(good.reduce((a, b) => a + b, 0) / good.length), at, packets: good.length }
+  }
+  return {
+    heartRate: avg((s) => s.heartRate, (s) => s.heartRateQuality === 'good' && s.heartRate !== null),
+    spo2: avg((s) => s.spo2, (s) => s.spo2Quality === 'good' && s.spo2 !== null),
+  }
+}
+
+/** Latest sample whose quality is good, per measurement (shown as "last good … ago"). */
 export function latestGood(samples: WatchSample[]) {
   let heartRate: { value: number; at: number } | null = null
   let spo2: { value: number; at: number } | null = null

@@ -294,6 +294,9 @@ export function CheckInForm() {
                     {QUALITY_TEXT[quality].label}
                     {quality === 'motion' && rawLast !== null && ` (${rawLast} ${INDICATORS[id].unit})`}
                     {goodAt && ` · last good ${secondsAgo(goodAt)}`}
+                    {watch.average[id]
+                      ? ` · twin uses the 1-min average of ${watch.average[id]!.packets} good packets`
+                      : ' · averaging the first minute'}
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">Waiting for the first packet…</p>

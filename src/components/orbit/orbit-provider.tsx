@@ -60,6 +60,7 @@ import {
   WATCH_POLL_MS,
   WATCH_STALE_MS,
   latestGood,
+  liveAverage,
   nextWatchSample,
   type WatchCentre,
   type WatchSample,
@@ -77,8 +78,10 @@ type Overrides = Partial<Record<MeasuredIndicatorId, number>>
 export interface WatchStream {
   /** Newest packets first is NOT guaranteed: oldest first, last 24 kept. */
   samples: WatchSample[]
-  /** Latest good-quality value per measurement (what the twin uses). */
+  /** Latest good-quality packet per measurement (for "last good … ago"). */
   good: ReturnType<typeof latestGood>
+  /** 1-minute average of good packets (what the twin uses); null until 6 good packets arrived. */
+  average: ReturnType<typeof liveAverage>
   /** No good packet for 30 s. */
   stale: boolean
   paused: boolean
@@ -342,7 +345,7 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
       try {
         await saveReading(row)
         // Store the watch values the astronaut saw at check-in time (latest good packets).
-        const good = latestGood(samples)
+        const good = liveAverage(samples)
         if (good.heartRate || good.spo2) {
           await saveReading({
             astronaut_id: id,
@@ -555,6 +558,7 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
   }, [session, watchPaused, watchCentre])
 
   const watchGood = useMemo(() => latestGood(samples), [samples])
+  const watchAverage = useMemo(() => liveAverage(samples), [samples])
   const newestGood = Math.max(watchGood.heartRate?.at ?? 0, watchGood.spo2?.at ?? 0)
   const lastPacket = samples[samples.length - 1]?.at ?? 0
   const watchStale = samples.length > 0 && lastPacket - newestGood > WATCH_STALE_MS
@@ -562,10 +566,10 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
   const liveOverrides = useMemo<Overrides>(() => {
     const out: Overrides = {}
     if (watchStale) return out
-    if (watchGood.heartRate) out.heartRate = watchGood.heartRate.value
-    if (watchGood.spo2) out.spo2 = watchGood.spo2.value
+    if (watchAverage.heartRate) out.heartRate = watchAverage.heartRate.value
+    if (watchAverage.spo2) out.spo2 = watchAverage.spo2.value
     return out
-  }, [watchGood, watchStale])
+  }, [watchAverage, watchStale])
 
   // Today's symptoms: this tablet's latest check-in, else the latest check-in stored in the database.
   const symptomsToday = useMemo<SymptomId[]>(() => {
@@ -621,7 +625,7 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
       removeCrewMember,
       setEnvironmentId,
       submitCheckIn,
-      watch: { samples, good: watchGood, stale: watchStale, paused: watchPaused, setPaused: setWatchPaused },
+      watch: { samples, good: watchGood, average: watchAverage, stale: watchStale, paused: watchPaused, setPaused: setWatchPaused },
       symptomsToday,
       isNewAstronaut,
       demo,
@@ -671,6 +675,7 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
     demo,
     samples,
     watchGood,
+    watchAverage,
     watchStale,
     watchPaused,
   ])

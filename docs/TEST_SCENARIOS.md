@@ -187,6 +187,8 @@ Starting state of the demo crew (Mars transit, mission day 214):
 | V5 | Back to sign in → the sign-in list | Still only the real crew. No simulated astronaut appears; `npm run db` shows no new rows. |
 | V6 | Ahmed: Check-in with heart rate **65** (normal 58) | The form marks this single reading Watch, but after saving the twin heart stays **Normal**, message “12% above your normal today. One day can be noise: Watch starts if it is still off tomorrow.” |
 | V7 | Ahmed: Check-in with heart rate **75** | Heart **Act** at once (Act is never delayed). |
+| V8 | Sign in as Sara and leave Twin View open for 5 minutes (no Demo buttons) | Heart stays **Watch** (orange, about 73–74 bpm). The red emergency screen must **not** appear by itself. |
+| V9 | Sara → Daily Check-in, watch card | Shows “· averaging the first minute”, then “· twin uses the 1-min average of N good packets”. |
 
 ## Reset after testing
 

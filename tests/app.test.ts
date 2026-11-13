@@ -6,7 +6,7 @@ import { computeIndicators, computeOrgans, readinessScore, worstStatus } from '.
 import { buildTwinSnapshot } from '../src/lib/orbit/twin'
 import { buildAnswers, organShownStatus, sourceLabel } from '../src/lib/orbit/organ-explain'
 import { SYMPTOMS, symptomLevels, type SymptomId } from '../src/lib/orbit/symptoms'
-import { latestGood, nextWatchSample } from '../src/lib/orbit/sensor-adapter'
+import { latestGood, liveAverage, nextWatchSample, type WatchSample } from '../src/lib/orbit/sensor-adapter'
 import { toReadingHistory, type Reading } from '../src/lib/orbit/api/readings-api'
 import { profileToAstronaut } from '../src/lib/orbit/profiles'
 import { runValidation } from '../src/lib/orbit/validation'
@@ -135,6 +135,29 @@ export function run(t: T) {
       { at: 2, heartRate: 95, spo2: 91, heartRateQuality: 'motion', spo2Quality: 'motion' },
     ]).heartRate?.value === 60,
   )
+
+  // Bug found with Sara: her heart rate is 73 (Watch) and Act starts at 74.4, so ONE noisy packet of 75
+  // raised the full-screen emergency. The twin now uses the 1-minute average of good packets.
+  let seed = 7
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  const stream: WatchSample[] = []
+  let worstSingle = 0
+  let worstAverage = 0
+  for (let i = 0; i < 5000; i++) {
+    const p = nextWatchSample({ heartRate: 73, spo2: 98 }, i * 5000, rand)
+    stream.push(p)
+    if (stream.length > 24) stream.shift()
+    if (p.heartRateQuality === 'good') worstSingle = Math.max(worstSingle, p.heartRate!)
+    worstAverage = Math.max(worstAverage, liveAverage(stream).heartRate?.value ?? 0)
+  }
+  t('single watch packets for Sara do reach 75 bpm (the bug)', worstSingle >= 75, worstSingle)
+  t('Sara: the 1-minute average never reaches Act (75 bpm) in 7 hours of packets', worstAverage > 0 && worstAverage <= 74, worstAverage)
+  t('no live value from fewer than 6 good packets', liveAverage(stream.slice(-3)).heartRate === null)
+  const saraLive = computeIndicators({
+    astronaut: crew('sara'), env: getEnvironment('mars-transit'), overrides: { heartRate: 74 }, votes: [],
+    readings: toReadingHistory(rowsFor('sara')),
+  }).heartRate
+  t('Sara with live average 74 stays Watch, not Act', saraLive.status === 'watch', saraLive.status)
 
   // ---------- environments and Mars blackout (Member 2) ----------
   const mars = twin(crew('omar'), { extra: [injected('omar', { spo2_pct: 87 })] }).snap
