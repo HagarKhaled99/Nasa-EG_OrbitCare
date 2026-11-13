@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, Clock, Database, Globe2, Delete, Loader2, Lock, PenLine, RefreshCw, Search, Settings2, Watch, X } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Clock, Database, FlaskConical, Globe2, Delete, Loader2, Lock, PenLine, RefreshCw, Search, Settings2, Watch, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MISSION_DAY, MISSION_NAME } from '@/lib/orbit/crew'
 import {
@@ -287,6 +287,13 @@ export function SignIn() {
           >
             <Globe2 className="size-4" aria-hidden />
             Ground team on Earth? Open the Ground portal
+          </Link>
+          <Link
+            to="/validation"
+            className="inline-flex items-center gap-2 self-start rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <FlaskConical className="size-4" aria-hidden />
+            How we tested our alerts on 1,000 simulated astronauts
           </Link>
 
           <div className="rounded-xl border border-border bg-secondary/40 p-4 text-sm leading-relaxed text-muted-foreground">

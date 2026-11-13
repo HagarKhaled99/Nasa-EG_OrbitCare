@@ -9,6 +9,7 @@ import { SYMPTOMS, symptomLevels, type SymptomId } from '../src/lib/orbit/sympto
 import { latestGood, nextWatchSample } from '../src/lib/orbit/sensor-adapter'
 import { toReadingHistory, type Reading } from '../src/lib/orbit/api/readings-api'
 import { profileToAstronaut } from '../src/lib/orbit/profiles'
+import { runValidation } from '../src/lib/orbit/validation'
 import dataset from '../public/data/orbit_twin_demo.json'
 
 type T = (name: string, ok: boolean, detail?: unknown) => void
@@ -142,4 +143,30 @@ export function run(t: T) {
   t('blackout: contact stays on board, seriousness unchanged', blackout.overall === 'act' && blackout.contactChain[1] === 'Crew medical officer')
   const iss = twin(crew('omar'), { env: 'iss', extra: [injected('omar', { spo2_pct: 87 })], blackout: true }).snap
   t('ISS: no blackout; same Act status, different contact', iss.comms.state === 'reachable' && iss.overall === 'act' && iss.contactChain.join() !== blackout.contactChain.join())
+
+  // ---------- heart rate / sleep wait for a second day before Watch (chosen by the validation) ----------
+  const hrOn = (values: number[]) =>
+    computeIndicators({
+      astronaut: crew('ahmed'),
+      env: getEnvironment('iss'),
+      overrides: {},
+      votes: [],
+      readings: { heartRate: values.map((value, i) => ({ day: 214 - values.length + 1 + i, value })) },
+    }).heartRate
+  const oneDay = hrOn([58, 58, 58, 65]) // Ahmed's normal 58 → 65 is 12 % above, one day only
+  t('heart rate 1 day off → stays normal, says it will check again tomorrow', oneDay.status === 'normal' && /tomorrow/.test(oneDay.message), oneDay.message)
+  t('heart rate 2 days off → Watch', hrOn([58, 58, 65, 66]).status === 'watch')
+  t('heart rate far off (Act) fires at once, never delayed', hrOn([58, 58, 58, 75]).status === 'act')
+
+  // ---------- validation on 1,000 simulated astronauts (in memory only) ----------
+  const v = runValidation()
+  const old = runValidation({ rule: 'single-day' })
+  t('validation: 1,000 simulated astronauts, about 40 % with a hidden problem', v.astronauts === 1000 && v.withProblem > 350 && v.withProblem < 450, v.withProblem)
+  t('validation: no hidden problem is ever missed', v.missed === 0, v.byKind)
+  t('validation: at least 90 % caught before they become serious', v.caughtEarly / v.withProblem >= 0.9, v.caughtEarly)
+  t('validation: warning comes days ahead (median ≥ 3 days)', (v.medianLeadDays ?? 0) >= 3, v.medianLeadDays)
+  t('validation: false Act alarms stay rare (< 0.25 per astronaut-month)', v.falseActPer30 < 0.25, v.falseActPer30)
+  t('validation: our rule cuts false Watch alarms at least 2x without losing early catches', v.falseWatchPer30 * 2 <= old.falseWatchPer30 && v.caughtEarly >= old.caughtEarly, [v.falseWatchPer30, old.falseWatchPer30])
+  t('validation: every missing reading shows Unknown, never normal', v.missingShownUnknown === 1 && v.missingDays > 0)
+  t('validation: same seed → same result (repeatable)', runValidation({ astronauts: 50, seed: 9 }).caughtEarly === runValidation({ astronauts: 50, seed: 9 }).caughtEarly)
 }

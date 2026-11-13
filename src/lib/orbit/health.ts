@@ -203,9 +203,13 @@ export function computeIndicators(input: TwinInput): Record<IndicatorId, Indicat
           ? measuredHistory(astronaut, id, overrides[id])
           : historyFromReadings([], overrides[id]) // only today's live/check-in value, if any
     const value = history.length > 0 ? history[history.length - 1].value : Number.NaN
-    const { deviation, status } = deviationStatus(value, baseline, meta)
+    const { deviation, status: todayStatus } = deviationStatus(value, baseline, meta)
     const daysOff = countDaysOff(history, baseline, meta)
     const missing = !Number.isFinite(value)
+    // Noisy vitals (heart rate, sleep): one odd day is often just noise, so Watch waits for a second day.
+    // Act is never delayed. Validated in src/lib/orbit/validation.ts (false Watch alarms down ~3x, no missed cases).
+    const waiting = todayStatus === 'watch' && meta.confirmDays !== undefined && daysOff < meta.confirmDays
+    const status: Status = waiting ? 'normal' : todayStatus
     result[id] = {
       id,
       meta,
@@ -219,7 +223,9 @@ export function computeIndicators(input: TwinInput): Record<IndicatorId, Indicat
         ? history.length === 0
           ? 'No readings yet. Your twin starts learning after your first check-in.'
           : 'No valid reading today. Measure again.'
-        : describe(meta, deviation, status, daysOff),
+        : waiting
+          ? `${Math.round(Math.abs(deviation) * 100)}% ${deviation > 0 ? 'above' : 'below'} your normal today. One day can be noise: Watch starts if it is still off tomorrow.`
+          : describe(meta, deviation, status, daysOff),
     }
   }
 

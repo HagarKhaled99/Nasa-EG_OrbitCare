@@ -25,6 +25,11 @@ export interface IndicatorMeta {
   actPct: number
   hardMin?: number
   hardMax?: number
+  /**
+   * Noisy vitals only: a single day off is not enough for Watch; it must be off this many days in a row.
+   * Act still fires at once. Chosen by the validation on 1,000 simulated astronauts (src/lib/orbit/validation.ts).
+   */
+  confirmDays?: number
   step: number
   how: string
   why: string
@@ -43,6 +48,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     actPct: 0.2,
     hardMin: 40,
     hardMax: 120,
+    confirmDays: 2,
     step: 1,
     how: 'Sit still for 2 minutes. Clip the pulse oximeter to your index finger and wait until the number stops changing (about 30 seconds).',
     why: 'Without gravity, fluid shifts toward your head and the heart works differently. A resting rate that slowly climbs above your normal can signal dehydration, stress, poor sleep or the start of an illness.',
@@ -137,6 +143,7 @@ export const INDICATORS: Record<IndicatorId, IndicatorMeta> = {
     watchPct: 0.1,
     actPct: 0.25,
     hardMin: 4,
+    confirmDays: 2,
     step: 0.5,
     how: 'Use your wrist actigraphy band or estimate from when you fell asleep to when you woke. Do not count time awake in the bag.',
     why: 'There are 16 sunrises a day in orbit and none on the way to Mars. Losing sleep affects mood, reaction time and decision making long before you notice it.',

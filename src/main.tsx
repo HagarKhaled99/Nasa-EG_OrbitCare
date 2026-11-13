@@ -14,7 +14,7 @@ try {
   const firstOpenInThisTab = !sessionStorage.getItem(OPENED_KEY)
   sessionStorage.setItem(OPENED_KEY, '1')
   const path = window.location.pathname
-  const publicPage = ['/login', '/signup', '/manage-crew', '/ground/login'].includes(path)
+  const publicPage = ['/login', '/signup', '/manage-crew', '/ground/login', '/validation'].includes(path)
   if (firstOpenInThisTab && !publicPage) {
     window.history.replaceState(null, '', path.startsWith('/ground') ? '/ground/login' : '/login')
   }

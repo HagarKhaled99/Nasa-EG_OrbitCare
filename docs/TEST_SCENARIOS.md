@@ -176,6 +176,18 @@ Starting state of the demo crew (Mars transit, mission day 214):
 | O1 | `npm run start` → open http://localhost:4173, sign in, visit a few pages, then turn **Wi-Fi off** | Everything keeps working (it all runs on this laptop). Fonts may change to the system font. |
 | O2 | Stop the server (Ctrl+C), reload http://localhost:4173/login | The page still opens (service worker). Signing in shows that the crew server is not reachable. |
 
+## V · Validation (1,000 simulated astronauts)
+
+| ID | Steps | Expected result |
+|---|---|---|
+| V1 | Sign-in page → **How we tested our alerts on 1,000 simulated astronauts** | `/validation` opens without a PIN. “Simulating 1,000 astronauts…” then results in about 1–3 s. |
+| V2 | Read the result tiles (seed 2026) | Caught before serious **96%** (393 of 410), Missed **0**, Warning ahead **4 days**, Missing data shown Unknown **100%**, False Watch **1.9**, False Act **0.09**. |
+| V3 | “What the validation changed” table | Old 1-day rule: 96% / 5.7 false Watch. 2-days-for-all: 85%. Ours (highlighted): 96% / 1.9. |
+| V4 | **Run again with new astronauts** | New seed shown; numbers change slightly (about 93–96% early, 0 missed, ~1.9 false Watch). |
+| V5 | Back to sign in → the sign-in list | Still only the real crew. No simulated astronaut appears; `npm run db` shows no new rows. |
+| V6 | Ahmed: Check-in with heart rate **65** (normal 58) | The form marks this single reading Watch, but after saving the twin heart stays **Normal**, message “12% above your normal today. One day can be noise: Watch starts if it is still off tomorrow.” |
+| V7 | Ahmed: Check-in with heart rate **75** | Heart **Act** at once (Act is never delayed). |
+
 ## Reset after testing
 
 For each astronaut you changed: sign in → **Demo → Reset my demo data**. This removes their check-ins, injected readings, steps, notifications, reports, advice and fitness decisions. The 31-day demo data stays.

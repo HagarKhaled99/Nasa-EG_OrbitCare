@@ -47,7 +47,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   // Auth pages and the Ground portal (its own layout) render without the astronaut shell.
-  if (pathname === '/login' || pathname === '/signup' || pathname === '/manage-crew' || pathname.startsWith('/ground')) {
+  if (pathname === '/login' || pathname === '/signup' || pathname === '/manage-crew' || pathname === '/validation' || pathname.startsWith('/ground')) {
     return <>{children}</>
   }
 

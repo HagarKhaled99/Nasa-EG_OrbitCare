@@ -266,7 +266,28 @@ and mood reminders now use real data. The Future Slider uses `recharts` (run `np
 | Blood sugar, grip, vision only on the tablet | Stored in the database |
 | Fixed streak; Crew Pulse teammate always Sara | Streak counted from real check-ins for signed-up astronauts; Crew Pulse teammate chosen per person |
 | No sign-out on phones | Sign-out button in the top bar on small screens |
-| Tests only on one laptop | `npm test` (67 checks) |
+| Tests only on one laptop | `npm test` (105 checks) |
+
+## Validation: do the alerts come at the right time? (`/validation`)
+Open **http://localhost:5173/validation** (no sign-in; link on the sign-in page). Code: `src/lib/orbit/validation.ts`.
+
+1,000 simulated astronauts are created **in memory only** (never in the database or the sign-in list), each with
+their own normal and day-to-day noise (5 % of days have no watch signal). About 40 % get a hidden problem that slowly
+worsens (heart rate, SpO₂, sleep, fever, blood pressure). The **real** `computeIndicators` runs on every simulated day.
+"Serious" uses clinical cut-offs (SpO₂ ≤ 92 %, ≥ 38.0 °C, ≥ 140 mmHg, ≤ 5 h sleep, HR ≥ 25 % above own normal),
+not our own thresholds. Seeded, so it is repeatable.
+
+| Rule | Caught before serious | Missed | False Watch / healthy astronaut / month |
+|---|---|---|---|
+| Watch after 1 day off (old rule) | 96 % | 0 | 5.7 |
+| Watch after 2 days off, all vitals | 85 % | 0 | 0.5 |
+| **Ours: 2 days for heart rate + sleep, 1 day for the rest** | **96 %** | **0** | **1.9** |
+
+Result: heart rate and sleep now need **2 days in a row** before Watch (`confirmDays` in `indicators.ts`); one odd
+day shows "One day can be noise: Watch starts if it is still off tomorrow." **Act is never delayed.** False red
+alerts: ~0.1 per healthy astronaut per month. Median warning: 4 days before serious. `npm test` checks these numbers.
+Limits: simulated people, not clinical proof; blood pressure still gives ~1.5 false Watch days/month (next step:
+average two cuff readings). Not AI: fixed, explainable rules; the test only measures them.
 
 ## Scientific notes / honest limits
 - The twin compares readings with the person's **own** baseline. Reference ranges (AHA/ACC 2017 BP, AHA resting

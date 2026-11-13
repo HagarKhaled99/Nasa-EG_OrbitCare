@@ -14,6 +14,7 @@ import { OrganPage } from '@/components/orbit/organ-page'
 import { SignIn } from '@/components/orbit/sign-in'
 import { SignUp } from '@/components/orbit/sign-up'
 import { TwinView } from '@/components/orbit/twin-view'
+import { ValidationPage } from '@/components/orbit/validation-page'
 
 /** Every app page sits behind this guard. No session → /login (and come back after signing in). */
 function RequireSession() {
@@ -43,6 +44,8 @@ export function App() {
           <Route path="/login" element={<SignIn />} />
           <Route path="/signup" element={<SignUp />} />
           <Route path="/manage-crew" element={<ManageCrew />} />
+          {/* How we tested the alerts: 1,000 simulated astronauts, in memory only (public, for judges) */}
+          <Route path="/validation" element={<ValidationPage />} />
           {/* Ground portal (Earth): flight surgeon + mission director, its own sign-in and layout */}
           <Route path="/ground/*" element={<GroundPortal />} />
           <Route element={<RequireSession />}>
