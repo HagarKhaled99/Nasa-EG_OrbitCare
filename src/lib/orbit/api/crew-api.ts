@@ -3,6 +3,7 @@
  * to http://localhost:4000 in development.
  */
 import type { CrewProfile, NewCrewProfile } from '../profiles'
+import type { Session } from '../auth/auth-service'
 
 const BASE = '/api'
 const TIMEOUT_MS = 6000
@@ -66,14 +67,15 @@ export async function fetchAstronauts(): Promise<CrewProfile[]> {
   return data
 }
 
-export async function createAstronaut(input: NewCrewProfile): Promise<CrewProfile> {
-  const { status, data } = await request<CrewProfile>('POST', '/astronauts', input)
+/** Sign-up. The server also signs the new astronaut in (session cookie) and returns the session. */
+export async function createAstronaut(input: NewCrewProfile): Promise<CrewProfile & { session: Session }> {
+  const { status, data } = await request<CrewProfile & { session: Session }>('POST', '/astronauts', input)
   if (status !== 201) fail(status, data)
   return data
 }
 
 export type ServerSignInResult =
-  | { ok: true }
+  | { ok: true; session: Session }
   | { ok: false; reason: 'wrong-pin'; attemptsLeft: number }
   | { ok: false; reason: 'locked'; lockedUntil: number }
 
@@ -81,6 +83,27 @@ export async function signInAstronaut(astronautId: string, pin: string): Promise
   const { status, data } = await request<ServerSignInResult>('POST', '/auth/sign-in', { astronautId, pin })
   if (status === 200 || status === 401 || status === 423) return data
   fail(status, data)
+}
+
+/** Who is signed in on this tablet (from the httpOnly cookie), or null. */
+export async function fetchSession(): Promise<Session | null> {
+  const { status, data } = await request<{ session?: Session }>('GET', '/auth/session')
+  if (status === 401) return null
+  if (status !== 200 || !data?.session) fail(status, data)
+  return data.session
+}
+
+export async function signOutSession(): Promise<void> {
+  await request<unknown>('POST', '/auth/sign-out')
+}
+
+/** Forgotten PIN: set a new one with the admin PIN (crew medical officer). Also lifts a lockout. */
+export async function resetAstronautPin(astronautId: string, adminPin: string, newPin: string): Promise<void> {
+  const { status, data } = await request<unknown>('POST', `/astronauts/${encodeURIComponent(astronautId)}/reset-pin`, {
+    adminPin,
+    newPin,
+  })
+  if (status !== 204) fail(status, data)
 }
 
 export async function deleteAstronaut(astronautId: string, pin: string): Promise<void> {

@@ -18,7 +18,7 @@ export function Button({
   className,
   type = 'button',
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; ref?: React.Ref<HTMLButtonElement> }) {
   return <button type={type} className={cn(base, variants[variant], 'h-11 px-4', className)} {...props} />
 }
 

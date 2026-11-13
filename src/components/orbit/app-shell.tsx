@@ -8,12 +8,15 @@ import {
   Rocket,
   Siren,
   Users,
+  Mail,
   Watch,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { WATCH_SYNC } from '@/lib/orbit/sensors'
 import { useOrbit } from './orbit-provider'
 import { TopBar } from './top-bar'
+import { DemoPanel } from './demo-panel'
+import { EmergencyOverlay } from './emergency-overlay'
 
 const NAV = [
   { href: '/', label: 'Twin View', short: 'Twin', icon: PersonStanding },
@@ -21,6 +24,7 @@ const NAV = [
   { href: '/future', label: 'Future Slider', short: 'Future', icon: Hourglass },
   { href: '/actions', label: 'Action Center', short: 'Actions', icon: Siren },
   { href: '/crew', label: 'Crew Pulse', short: 'Crew', icon: Users },
+  { href: '/inbox', label: 'Inbox from Earth', short: 'Inbox', icon: Mail },
   { href: '/mission', label: 'Mission & Routine', short: 'Mission', icon: Rocket },
 ]
 
@@ -32,16 +36,20 @@ function isActive(pathname: string, href: string) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { alerts, checkedInToday, signOut } = useOrbit()
+  const { alerts, checkedInToday, signOut, watch, unreadAdvice } = useOrbit()
   const urgent = alerts.some((a) => a.status === 'act')
 
   const badgeFor = (href: string) => {
     if (href === '/actions' && alerts.length > 0) return String(alerts.length)
     if (href === '/check-in' && !checkedInToday) return 'Due'
+    if (href === '/inbox' && unreadAdvice > 0) return String(unreadAdvice)
     return null
   }
 
-  if (pathname === '/login' || pathname === '/signup' || pathname === '/manage-crew') return <>{children}</>
+  // Auth pages and the Ground portal (its own layout) render without the astronaut shell.
+  if (pathname === '/login' || pathname === '/signup' || pathname === '/manage-crew' || pathname === '/validation' || pathname.startsWith('/ground')) {
+    return <>{children}</>
+  }
 
   return (
     <div className="flex min-h-dvh">
@@ -92,18 +100,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="mx-3 mt-3 rounded-xl border border-sidebar-border bg-background/40 p-4 text-xs leading-relaxed text-muted-foreground">
           <p className="flex items-center gap-2 font-medium text-foreground">
             <Watch className="size-4 text-primary" aria-hidden />
-            Watch synced {WATCH_SYNC.lastSync}
+            {watch.paused ? 'Watch stream paused' : watch.stale ? 'Watch: no good reading' : 'Watch live'}
+            <span
+              aria-hidden
+              className={cn(
+                'ml-auto size-2 rounded-full',
+                watch.paused ? 'bg-muted-foreground' : watch.stale ? 'bg-status-watch' : 'bg-status-ok animate-pulse',
+              )}
+            />
           </p>
           <p className="mt-1">
-            Battery {WATCH_SYNC.battery}%. Works offline: all data stays on this tablet, reports are queued for the
-            next comms window.
+            Battery {WATCH_SYNC.battery}%. Works without internet: data stays in the crew database on board, reports are
+            queued for the next comms window.
           </p>
         </div>
         <button
           type="button"
           onClick={() => {
-            signOut()
-            navigate('/login')
+            void signOut().then(() => navigate('/login'))
           }}
           className="m-3 mt-2 flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
@@ -115,11 +129,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
         <main className="flex-1 px-4 pt-4 pb-28 md:px-6 lg:px-8 lg:pb-10">{children}</main>
+        <EmergencyOverlay />
+        <DemoPanel />
       </div>
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-border bg-sidebar/95 px-1 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-border bg-sidebar/95 px-1 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden"
       >
         {NAV.map((item) => {
           const active = isActive(pathname, item.href)

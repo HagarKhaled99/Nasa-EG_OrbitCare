@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, Clock, Database, Delete, Loader2, Lock, PenLine, RefreshCw, Search, Settings2, Watch, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ArrowLeft, ChevronRight, Clock, Database, FlaskConical, Globe2, Delete, Loader2, Lock, PenLine, RefreshCw, Search, Settings2, Watch, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MISSION_DAY, MISSION_NAME } from '@/lib/orbit/crew'
 import {
@@ -9,7 +9,6 @@ import {
   MAX_ATTEMPTS,
   PIN_LENGTH,
   formatAgo,
-  getAttemptState,
   recentSignIns,
 } from '@/lib/orbit/auth/auth-service'
 import { isSampleCrew } from '@/lib/orbit/profiles'
@@ -27,9 +26,8 @@ type Feedback =
 
 export function SignIn() {
   const navigate = useNavigate()
-  const location = useLocation()
-  const returnTo = (location.state as { from?: string } | null)?.from ?? '/'
-  const { crew, profiles, signIn, crewDbStatus, refreshCrew } = useOrbit()
+  const { crew, profiles, signIn, signOut, sessionStatus, crewDbStatus, refreshCrew } = useOrbit()
+  const signedInHere = useRef(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [pin, setPin] = useState('')
   const [feedback, setFeedback] = useState<Feedback>({ kind: 'none' })
@@ -54,12 +52,17 @@ export function SignIn() {
     return () => window.clearInterval(timer)
   }, [feedback])
 
+  // Hand-over rule (Member 2): opening the sign-in screen ends the previous person's session,
+  // so the next crew member never lands in someone else's twin.
+  useEffect(() => {
+    if (sessionStatus === 'signed-in' && !signedInHere.current) void signOut()
+  }, [sessionStatus, signOut])
+
   const choose = (id: string) => {
-    const state = getAttemptState(id)
     setSelectedId(id)
     setPin('')
     setNow(Date.now())
-    setFeedback(state.lockedUntil ? { kind: 'locked', until: state.lockedUntil } : { kind: 'none' })
+    setFeedback({ kind: 'none' })
   }
 
   const press = useCallback(
@@ -73,12 +76,15 @@ export function SignIn() {
       if (next.length < PIN_LENGTH) return
 
       setChecking(true)
+      signedInHere.current = true
       void signIn(selected.id, next).then((result) => {
         setChecking(false)
         if (result.ok) {
-          navigate(returnTo, { replace: true })
+          // Shared tablet: every sign-in starts on the person's own Twin View, never on the previous user's page.
+          navigate('/', { replace: true })
           return
         }
+        signedInHere.current = false
         setPin('')
         setNow(Date.now())
         if (result.reason === 'server-unavailable') {
@@ -90,7 +96,7 @@ export function SignIn() {
         else if (result.reason === 'wrong-pin') setFeedback({ kind: 'wrong', attemptsLeft: result.attemptsLeft })
       })
     },
-    [selected, locked, checking, pin, signIn, navigate, returnTo],
+    [selected, locked, checking, pin, signIn, navigate],
   )
 
   // Physical keyboard support on the PIN screen (digits, Backspace, Escape).
@@ -123,7 +129,6 @@ export function SignIn() {
   const memberCard = (member: (typeof crew)[number], recentAt?: number, highlight = false) => {
     const profile = profiles.find((p) => p.id === member.id)
     const watchPaired = profile ? Boolean(profile.devices.watch) : true
-    const memberLocked = Boolean(getAttemptState(member.id).lockedUntil)
     return (
       <li key={member.id}>
         <button
@@ -144,12 +149,7 @@ export function SignIn() {
               {recentAt !== undefined ? `signed in ${formatAgo(recentAt)}` : `last check-in ${member.lastCheckIn}`}
             </span>
           </span>
-          {memberLocked ? (
-            <span className="hidden items-center gap-1 rounded-full border border-status-act/40 bg-status-act/10 px-2 py-0.5 text-xs font-medium text-status-act sm:inline-flex">
-              <Lock className="size-3" aria-hidden />
-              Locked
-            </span>
-          ) : watchPaired ? (
+          {watchPaired ? (
             <span className="hidden items-center gap-1 rounded-full border border-status-ok/40 bg-status-ok/10 px-2 py-0.5 text-xs font-medium text-status-ok sm:inline-flex">
               <Watch className="size-3" aria-hidden />
               Watch synced
@@ -260,7 +260,7 @@ export function SignIn() {
             >
               <Database className="size-4 shrink-0 text-status-watch" aria-hidden />
               <p className="min-w-0 flex-1">
-                Crew database not reachable, so only the sample crew are shown. Start it with{' '}
+                The crew server is not reachable, so nobody can sign in yet. Start it with{' '}
                 <code className="font-mono">npm run dev</code>.
               </p>
               <button
@@ -280,6 +280,20 @@ export function SignIn() {
           >
             <Settings2 className="size-4" aria-hidden />
             Manage crew database
+          </Link>
+          <Link
+            to="/ground/login"
+            className="inline-flex items-center gap-2 self-start rounded-md text-sm font-medium text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <Globe2 className="size-4" aria-hidden />
+            Ground team on Earth? Open the Ground portal
+          </Link>
+          <Link
+            to="/validation"
+            className="inline-flex items-center gap-2 self-start rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <FlaskConical className="size-4" aria-hidden />
+            How we tested our alerts on 1,000 simulated astronauts
           </Link>
 
           <div className="rounded-xl border border-border bg-secondary/40 p-4 text-sm leading-relaxed text-muted-foreground">

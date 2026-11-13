@@ -98,7 +98,8 @@ export function profileToAstronaut(profile: CrewProfile): Astronaut {
     drift: {},
     today: {},
     crewVotes: [],
-    pulseTargetId: CREW[0].id,
+    // Today's Crew Pulse question is about one of the sample crew (spread across them).
+    pulseTargetId: CREW[Math.round(seedFor(profile.id) * 50) % CREW.length].id,
   }
 }
 

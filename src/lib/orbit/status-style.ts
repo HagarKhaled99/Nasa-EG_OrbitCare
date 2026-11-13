@@ -30,6 +30,22 @@ export const STATUS_STYLE: Record<
   },
 }
 
+/** Status as shown to the person: the three alert levels plus "unknown" for missing data. */
+export type ShownStatus = Status | 'unknown'
+
+export const UNKNOWN_STYLE = {
+  label: 'Unknown',
+  text: 'text-muted-foreground',
+  bg: 'bg-muted-foreground',
+  soft: 'bg-muted/60',
+  border: 'border-border border-dashed',
+  color: 'var(--muted-foreground)',
+}
+
+export function styleFor(status: ShownStatus) {
+  return status === 'unknown' ? UNKNOWN_STYLE : STATUS_STYLE[status]
+}
+
 export function formatValue(value: number, decimals: number) {
-  return value.toFixed(decimals)
+  return Number.isFinite(value) ? value.toFixed(decimals) : '—'
 }

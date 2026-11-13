@@ -1,11 +1,13 @@
-﻿import { Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   Bell, Bone, CalendarCheck, Dumbbell, Flame, HeartPulse,
   Lock, Moon, Send, Shield, Stethoscope, Users,
 } from 'lucide-react'
 import { useOrbit } from './orbit-provider'
+import { EXERCISE_PLAN_MINUTES, MISSION_DAY } from '@/lib/orbit/crew'
 import { ENVIRONMENTS, formatDelay } from '@/lib/orbit/environments'
 import { cn } from '@/lib/utils'
+import { organShownStatus } from '@/lib/orbit/organ-explain'
 
 function LocalReadinessRing({ value }: { value: number }) {
   const safeValue = Math.max(0, Math.min(100, value))
@@ -22,15 +24,21 @@ function LocalReadinessRing({ value }: { value: number }) {
 }
 
 export function MissionRoutine() {
-  const { astronaut, readiness, streak, organs, checkedInToday, myVoteFor, reportsSent, env } = useOrbit()
+  const { astronaut, readiness, streak, organs, checkedInToday, myVoteFor, reportsSent, env, indicators, readings } = useOrbit()
+  // Real data instead of fixed ticks: exercise from today's watch/device minutes, mood from today's check-in.
+  const exerciseToday = indicators.exercise.value
+  const exerciseDone = Number.isFinite(exerciseToday) && exerciseToday >= EXERCISE_PLAN_MINUTES * 0.9
+  const moodLogged = readings.some(
+    (r) => r.mission_day === MISSION_DAY && r.data_origin === 'MANUAL_CHECKIN' && r.mood_1_to_5 !== null,
+  )
   const answeredPulse = myVoteFor(astronaut.pulseTargetId) !== undefined
   const organStatus = (id: string) => organs.find((item) => item.organ.id === id)?.status
 
   const routine = [
-    { time: '08:00', title: 'Morning vitals', detail: 'Heart rate, blood pressure, temperature and blood sugar', icon: Stethoscope, done: checkedInToday, href: '/check-in' },
-    { time: '12:30', title: 'Exercise block', detail: 'Treadmill and resistance training', icon: Dumbbell, done: true, href: '/organ/muscles' },
+    { time: '08:00', title: 'Morning vitals', detail: 'Blood pressure, temperature, blood sugar (heart rate and SpO₂ come from your watch)', icon: Stethoscope, done: checkedInToday, href: '/check-in' },
+    { time: '12:30', title: 'Exercise block', detail: `Treadmill and resistance training · ${Number.isFinite(exerciseToday) ? Math.round(exerciseToday) : '—'} of ${EXERCISE_PLAN_MINUTES} min today`, icon: Dumbbell, done: exerciseDone, href: '/organ/muscles' },
     { time: '18:00', title: 'Crew Pulse question', detail: 'Private daily question about a teammate', icon: Users, done: answeredPulse, href: '/crew' },
-    { time: '21:00', title: 'Sleep & mood log', detail: 'Wind-down routine and sleep preparation', icon: Moon, done: false, href: '/check-in' },
+    { time: '21:00', title: 'Sleep & mood log', detail: 'Log how you feel, then your wind-down routine', icon: Moon, done: moodLogged, href: '/check-in' },
   ]
 
   const badges = [
@@ -80,14 +88,26 @@ export function MissionRoutine() {
             </div>
           </div>
           <ul className="mt-5 flex flex-col gap-2 text-sm">
-            {organs.map((item) => (
-              <li key={item.organ.id} className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground">{item.organ.name}</span>
-                <span className={cn('font-mono', item.status === 'normal' ? 'text-status-ok' : item.status === 'watch' ? 'text-status-watch' : 'text-status-act')}>
-                  {item.status === 'normal' ? '0' : item.status === 'watch' ? '−9' : '−22'}
-                </span>
-              </li>
-            ))}
+            {organs.map((item) => {
+              const shown = organShownStatus(item)
+              return (
+                <li key={item.organ.id} className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">{item.organ.name}</span>
+                  <span
+                    className={cn(
+                      'font-mono',
+                      shown === 'normal' && 'text-status-ok',
+                      shown === 'unknown' && 'text-muted-foreground',
+                      shown === 'watch' && 'text-status-watch',
+                      shown === 'act' && 'text-status-act',
+                    )}
+                  >
+                    {/* same points as readinessScore(): watch −9, act −22, unknown −6 */}
+                    {shown === 'normal' ? '0' : shown === 'unknown' ? 'Unknown −6' : shown === 'watch' ? '−9' : '−22'}
+                  </span>
+                </li>
+              )
+            })}
             <li className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground">Today’s check-in</span>
               <span className={cn('font-mono', checkedInToday ? 'text-status-ok' : 'text-status-watch')}>{checkedInToday ? '0' : '−4'}</span>

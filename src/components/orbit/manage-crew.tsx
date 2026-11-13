@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Database, Loader2, Lock, RefreshCw, Trash2, UserPlus, Watch } from 'lucide-react'
+import { ArrowLeft, Check, Database, KeyRound, Loader2, Lock, RefreshCw, Trash2, UserPlus, Watch } from 'lucide-react'
 import { Button, ButtonLink } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { CREW } from '@/lib/orbit/crew'
 import { PIN_LENGTH } from '@/lib/orbit/auth/auth-service'
-import { ApiError } from '@/lib/orbit/api/crew-api'
+import { ApiError, resetAstronautPin } from '@/lib/orbit/api/crew-api'
 import { getMission, initialsFor, type CrewProfile } from '@/lib/orbit/profiles'
 import { AuthSplit } from './auth-split'
 import { useOrbit } from './orbit-provider'
@@ -147,6 +147,45 @@ function CrewRow({ profile }: { profile: CrewProfile }) {
   const first = profile.name.split(' ')[0]
   const b = profile.baseline
   const pinId = `remove-pin-${profile.id}`
+  const [resetting, setResetting] = useState(false)
+  const [adminPin, setAdminPin] = useState('')
+  const [newPin, setNewPin] = useState('')
+  const [newPin2, setNewPin2] = useState('')
+  const [done, setDone] = useState<string | null>(null)
+  const digits = (v: string) => v.replace(/\D/g, '').slice(0, PIN_LENGTH)
+
+  const closeReset = () => {
+    setResetting(false)
+    setAdminPin('')
+    setNewPin('')
+    setNewPin2('')
+    setError(null)
+  }
+
+  /** Forgotten PIN: the crew medical officer sets a new one with the admin PIN (also lifts a lockout). */
+  const reset = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (busy) return
+    if (newPin !== newPin2) return setError('The two new PINs do not match.')
+    setBusy(true)
+    setError(null)
+    try {
+      await resetAstronautPin(profile.id, adminPin, newPin)
+      closeReset()
+      setDone(`${first}’s PIN was changed. Sign in with the new PIN.`)
+    } catch (e) {
+      setAdminPin('')
+      setError(
+        e instanceof ApiError && e.status === 403
+          ? 'Admin PIN not accepted.'
+          : e instanceof Error
+            ? e.message
+            : 'Could not change the PIN.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const remove = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -170,7 +209,12 @@ function CrewRow({ profile }: { profile: CrewProfile }) {
   }
 
   return (
-    <li className={cn('rounded-2xl border bg-card p-4', confirming ? 'border-status-act/50' : 'border-border')}>
+    <li
+      className={cn(
+        'rounded-2xl border bg-card p-4',
+        confirming ? 'border-status-act/50' : resetting ? 'border-primary/50' : 'border-border',
+      )}
+    >
       <div className="flex items-start gap-4">
         <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/15 font-mono text-sm font-semibold text-primary">
           {initialsFor(profile.name)}
@@ -201,19 +245,94 @@ function CrewRow({ profile }: { profile: CrewProfile }) {
             )}
           </p>
         </div>
-        {!confirming && (
-          <Button
-            type="button"
-            variant="outline"
-            className="h-9 text-status-act hover:bg-status-act/10 hover:text-status-act"
-            onClick={() => setConfirming(true)}
-            aria-label={`Remove ${profile.name}`}
-          >
-            <Trash2 aria-hidden />
-            <span className="hidden sm:inline">Remove</span>
-          </Button>
+        {!confirming && !resetting && (
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9"
+              onClick={() => {
+                setDone(null)
+                setResetting(true)
+              }}
+              aria-label={`Reset PIN for ${profile.name}`}
+            >
+              <KeyRound aria-hidden />
+              <span className="hidden sm:inline">Reset PIN</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 text-status-act hover:bg-status-act/10 hover:text-status-act"
+              onClick={() => {
+                setDone(null)
+                setConfirming(true)
+              }}
+              aria-label={`Remove ${profile.name}`}
+            >
+              <Trash2 aria-hidden />
+              <span className="hidden sm:inline">Remove</span>
+            </Button>
+          </div>
         )}
       </div>
+
+      {done && (
+        <p role="status" className="mt-3 flex items-center gap-2 text-sm text-status-ok">
+          <Check className="size-4" aria-hidden />
+          {done}
+        </p>
+      )}
+
+      {resetting && (
+        <form onSubmit={(e) => void reset(e)} className="mt-4 flex flex-col gap-3 border-t border-border pt-4">
+          <p className="text-sm">
+            Forgot {first}&apos;s PIN? Nobody can read a stored PIN, so the crew medical officer sets a new one with the
+            admin PIN. This also lifts a lockout.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {(
+              [
+                ['Admin PIN', adminPin, setAdminPin, 'off'],
+                [`New PIN for ${first}`, newPin, setNewPin, 'new-password'],
+                ['Repeat new PIN', newPin2, setNewPin2, 'new-password'],
+              ] as const
+            ).map(([label, value, set, autoComplete], i) => (
+              <label key={label} className="flex flex-col gap-1 text-xs font-medium">
+                {label}
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete={autoComplete}
+                  autoFocus={i === 0}
+                  maxLength={PIN_LENGTH}
+                  value={value}
+                  onChange={(e) => set(digits(e.target.value))}
+                  className="h-10 w-28 rounded-lg border border-input bg-background px-3 font-mono tracking-[0.5em] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                />
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              className="h-10"
+              disabled={busy || [adminPin, newPin, newPin2].some((p) => p.length !== PIN_LENGTH)}
+            >
+              {busy ? <Loader2 className="animate-spin" aria-hidden /> : <KeyRound aria-hidden />}
+              Set new PIN
+            </Button>
+            <Button type="button" variant="ghost" className="h-10" onClick={closeReset}>
+              Cancel
+            </Button>
+          </div>
+          {error && (
+            <p className="text-sm text-status-act" role="alert">
+              {error}
+            </p>
+          )}
+        </form>
+      )}
 
       {confirming && (
         <form onSubmit={(e) => void remove(e)} className="mt-4 flex flex-col gap-3 border-t border-border pt-4">

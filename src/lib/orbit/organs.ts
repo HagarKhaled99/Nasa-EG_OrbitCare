@@ -22,7 +22,7 @@ export const ORGANS: OrganDef[] = [
     shortName: 'Brain',
     description:
       'Controls focus, memory, mood and decision making. On a long mission it is your most important tool and the hardest one to check on your own.',
-    hazard: 'Isolation & confinement',
+    hazard: 'Isolation and confinement',
     indicators: ['sleep', 'mood', 'crewPulse'],
     position: { x: 50, y: 6.5 },
     actions: {
@@ -31,17 +31,17 @@ export const ORGANS: OrganDef[] = [
         'Schedule one personal call or message home this week.',
       ],
       watch: [
-        'Follow the sleep plan: lights dimmed 60 min before your sleep window, no screens in the bag.',
-        'Use the blue-enriched light panel for 30 min after waking to reset your body clock.',
+        'Follow your sleep and light schedule, and keep your wind-down routine before your sleep window.',
+        'Use the light panel as your schedule says to keep your body clock steady.',
         'Book a 15-minute private talk with a crewmate or the ground psychologist.',
       ],
       act: [
         'Tell the crew medical officer today. You do not need to handle this alone.',
         'Pause safety-critical tasks (EVA, docking) until you have been cleared.',
-        'Start the behavioral health protocol in the onboard medical guide, section 7.',
+        'Start the behavioral health protocol (approved onboard protocol here).',
       ],
     },
-    medicalKit: 'Sleep aid (melatonin 3 mg) – only after medical officer approval',
+    medicalKit: 'Sleep aids only as directed by the crew medical officer (approved onboard protocol here)',
   },
   {
     id: 'eyes',
@@ -49,21 +49,21 @@ export const ORGANS: OrganDef[] = [
     shortName: 'Eyes',
     description:
       'Your eyes guide every task on board. Fluid that moves toward the head in low gravity can press on the back of the eye and blur near vision.',
-    hazard: 'Altered gravity (SANS)',
+    hazard: 'Gravity fields',
     indicators: ['vision'],
     position: { x: 50, y: 11.8 },
     actions: {
       normal: ['Repeat the near-vision check every 3 days.'],
       watch: [
         'Repeat the vision check tomorrow morning in the same light.',
-        'Use the lower-body negative pressure device for 30 min to pull fluid away from the head.',
+        'Follow the approved onboard fluid-shift protocol (approved onboard protocol here).',
       ],
       act: [
         'Stop the vision check and tell the crew medical officer now.',
-        'Schedule an onboard ultrasound or OCT eye scan.',
+        'Ask the crew medical officer about an onboard eye exam.',
       ],
     },
-    medicalKit: 'Adjustable-focus glasses (+0.5 to +3.0)',
+    medicalKit: 'Adjustable-focus glasses, if available onboard',
   },
   {
     id: 'heart',
@@ -71,27 +71,27 @@ export const ORGANS: OrganDef[] = [
     shortName: 'Heart',
     description:
       'Pumps blood and oxygen around your body. Without gravity, fluid shifts toward your head and your heart adapts — sometimes too much.',
-    hazard: 'Altered gravity (fluid shift)',
+    hazard: 'Gravity fields',
     indicators: ['heartRate', 'spo2', 'systolic', 'diastolic'],
     position: { x: 54.5, y: 25 },
     actions: {
       normal: [
-        'Keep drinking at least 2 L of water across the day.',
+        'Keep drinking fluids across the day as your hydration guidance says.',
         'Complete your scheduled aerobic session on the cycle ergometer.',
       ],
       watch: [
-        'Drink an extra 500 mL of water with electrolytes in the next 2 hours.',
-        'Do 30 min of moderate aerobic exercise (cycle at 60% effort).',
+        'Drink extra fluids as your onboard hydration guidance says.',
+        'Do your scheduled aerobic session. Do not skip it.',
         'Re-measure resting heart rate tonight and tomorrow morning.',
         'If it stays high for 2 more days, report the persistent change.',
       ],
       act: [
         'Stop exercise and rest in a seated, strapped position.',
         'Repeat the measurement in 10 min. If still out of range, follow the cardiac protocol.',
-        'Attach the 3-lead ECG from the medical kit and record 5 minutes.',
+        'Use the ECG from the medical kit as the onboard protocol directs (approved onboard protocol here).',
       ],
     },
-    medicalKit: 'Oral rehydration salts, 3-lead ECG',
+    medicalKit: 'ECG and rehydration supplies from the medical kit',
   },
   {
     id: 'blood',
@@ -99,7 +99,7 @@ export const ORGANS: OrganDef[] = [
     shortName: 'Immune',
     description:
       'Fights infection and carries energy to your cells. Radiation and a closed cabin weaken the immune system and make infections spread more easily.',
-    hazard: 'Radiation & closed environment',
+    hazard: 'Hostile/closed environments',
     indicators: ['glucose', 'temperature'],
     position: { x: 43, y: 34 },
     actions: {
@@ -110,12 +110,12 @@ export const ORGANS: OrganDef[] = [
         'Wash hands and wipe shared surfaces with disinfectant wipes.',
       ],
       act: [
-        'Start the fever protocol: rest, fluids, paracetamol 500 mg from the medical kit.',
+        'Start the onboard fever protocol (approved onboard protocol here).',
         'Wear a mask and use your own sleep station to protect the crew.',
         'Record temperature every 4 hours and attach it to the report packet.',
       ],
     },
-    medicalKit: 'Paracetamol 500 mg, glucose gel, disinfectant wipes',
+    medicalKit: 'Thermometer, glucose meter and disinfectant wipes from the medical kit',
   },
   {
     id: 'muscles',
@@ -123,14 +123,14 @@ export const ORGANS: OrganDef[] = [
     shortName: 'Muscles',
     description:
       'Hold you up, move you and protect your joints. In low gravity your postural muscles are barely used and start to shrink within weeks.',
-    hazard: 'Altered gravity',
+    hazard: 'Gravity fields',
     indicators: ['exercise', 'grip', 'muscleMass'],
     position: { x: 34.5, y: 28 },
     actions: {
       normal: ['Keep your resistance training schedule: 3 sessions a week minimum.'],
       watch: [
         'Add one extra resistance session this week (squats, deadlifts, heel raises).',
-        'Increase load on the resistance device by 5%.',
+        'Adjust the load on the resistance device together with your exercise plan.',
         'Repeat the grip test in 3 days.',
       ],
       act: [
@@ -145,22 +145,22 @@ export const ORGANS: OrganDef[] = [
     shortName: 'Bones',
     description:
       'Your skeleton keeps you upright and stores calcium. Without weight on it, weight-bearing bones like hips and spine lose mineral every month.',
-    hazard: 'Altered gravity',
+    hazard: 'Gravity fields',
     indicators: ['boneDensity', 'exercise'],
     position: { x: 41, y: 56 },
     actions: {
-      normal: ['Keep daily resistance exercise and take your vitamin D supplement.'],
+      normal: ['Keep your daily resistance exercise and follow your nutrition plan.'],
       watch: [
-        'Complete 150 min of exercise daily, with at least 60 min of resistance work.',
-        'Take calcium (1000 mg) and vitamin D (800 IU) with breakfast.',
+        'Complete your full daily exercise plan, including the resistance work.',
+        'Ask the crew medical officer about calcium and vitamin D (approved onboard protocol here).',
         'Use the Future Slider to see how your plan changes the projection.',
       ],
       act: [
-        'Talk to the crew medical officer about a bone protection medication.',
+        'Talk to the crew medical officer about bone protection options.',
         'Avoid high-impact tasks until cleared.',
       ],
     },
-    medicalKit: 'Calcium + vitamin D tablets',
+    medicalKit: 'Supplements only as directed by the crew medical officer',
   },
   {
     id: 'radiation',

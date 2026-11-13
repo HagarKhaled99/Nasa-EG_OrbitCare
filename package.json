@@ -10,7 +10,9 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "db": "node --no-warnings scripts/show-db.mjs",
-    "data:generate": "node --no-warnings scripts/generate-demo-data.mjs"
+    "data:generate": "node --no-warnings scripts/generate-demo-data.mjs",
+    "start": "node scripts/start.mjs",
+    "test": "node --no-warnings tests/run.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

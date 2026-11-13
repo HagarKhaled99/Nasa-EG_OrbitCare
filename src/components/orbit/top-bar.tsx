@@ -1,5 +1,9 @@
 
-import { Radio } from 'lucide-react'
+import { LogOut, Radio } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { cn } from '@/lib/utils'
+import { FITNESS_LABEL } from '@/lib/orbit/api/ground-api'
+import { FITNESS_STYLE } from './inbox'
 import { MISSION_DAY } from '@/lib/orbit/crew'
 import { ENVIRONMENTS, formatDelay, type EnvironmentId } from '@/lib/orbit/environments'
 import { useOrbit } from './orbit-provider'
@@ -9,7 +13,9 @@ const selectClass =
   'h-10 rounded-lg border border-input bg-secondary px-3 text-sm font-medium text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none'
 
 export function TopBar() {
-  const { astronaut, crew, env, readiness, setAstronautId, setEnvironmentId } = useOrbit()
+  const { astronaut, env, readiness, setEnvironmentId, signOut, inbox } = useOrbit()
+  const fitness = inbox?.fitness ?? null
+  const navigate = useNavigate()
 
   return (
     <header className="z-30 border-b lg:sticky lg:top-0 border-border bg-background/85 px-4 py-3 backdrop-blur md:px-6 lg:px-8">
@@ -19,22 +25,21 @@ export function TopBar() {
             {astronaut.initials}
           </span>
           <div className="min-w-0">
-            <label htmlFor="astronaut-select" className="sr-only">
-              Astronaut
-            </label>
-            <select
-              id="astronaut-select"
-              value={astronaut.id}
-              onChange={(e) => setAstronautId(e.target.value)}
-              className="-ml-1 max-w-full truncate rounded-md bg-transparent px-1 text-base font-semibold focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-            >
-              {crew.map((member) => (
-                <option key={member.id} value={member.id} className="bg-popover">
-                  {member.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-foreground">{astronaut.role}</p>
+            {/* Locked to the signed-in account (Member 2). To change person, sign out and sign in again. */}
+            <p className="truncate text-base font-semibold">{astronaut.name}</p>
+            <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+              {astronaut.role}
+              {fitness && (
+                <Link
+                  to="/inbox"
+                  className={cn('rounded-full border px-2 py-0.5 font-medium', FITNESS_STYLE[fitness.status].tone)}
+                  title={fitness.restrictions ?? undefined}
+                >
+                  {FITNESS_LABEL[fitness.status]}
+                  {fitness.restrictions ? ` · ${fitness.restrictions}` : ''}
+                </Link>
+              )}
+            </p>
           </div>
         </div>
 
@@ -77,6 +82,15 @@ export function TopBar() {
             <p className="text-xs font-medium">Mission score</p>
           </div>
           <ReadinessRing value={readiness} size={52} />
+          {/* The sidebar (with Sign out) is hidden on phones and small tablets. */}
+          <button
+            type="button"
+            onClick={() => void signOut().then(() => navigate('/login'))}
+            aria-label="Sign out"
+            className="flex size-10 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none lg:hidden"
+          >
+            <LogOut className="size-5" aria-hidden />
+          </button>
         </div>
       </div>
     </header>

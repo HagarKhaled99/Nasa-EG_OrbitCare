@@ -1,17 +1,16 @@
 import { cn } from '@/lib/utils'
-import type { Status } from '@/lib/orbit/health'
-import { STATUS_STYLE } from '@/lib/orbit/status-style'
+import { styleFor, type ShownStatus } from '@/lib/orbit/status-style'
 
 export function StatusPill({
   status,
   className,
   size = 'sm',
 }: {
-  status: Status
+  status: ShownStatus
   className?: string
   size?: 'sm' | 'lg'
 }) {
-  const style = STATUS_STYLE[status]
+  const style = styleFor(status)
   return (
     <span
       className={cn(
