@@ -49,10 +49,10 @@ shown on the sign-in screen. Change it with `ORBIT_DEMO_PIN` if the team prefers
 |---|---|---|
 | 1 — Sign in / sign up (Hagar) | `/login`, `/signup`, `/manage-crew` | ✅ done |
 | 2 — Twin View (Omar) | `/` | ✅ merged from `member2-twin-view` (incl. Earth-Independent Mode), linked to the database |
-| 3 — Organ pages | `/organ/:organId` (7 organs) | TODO, currently *ComingSoon* |
+| 3 — Organ pages (Menna) | `/organ/:organId` (7 organs) | ✅ merged from `menna` |
 | 4 — Check-in + data feed (Shahd) | `/check-in` | ✅ merged from `MEMBER4`, saves to the database |
-| 5 — Action Center + Crew Pulse | `/actions`, `/crew` | TODO |
-| 6 — Future Slider + Mission | `/future`, `/mission` | TODO |
+| 5 — Action Center + Crew Pulse (Salma) | `/actions`, `/crew` | ✅ API merged from `member5-actions-crew`; pages added from the original project and linked to it |
+| 6 — Future Slider + Mission (Marvey) | `/future`, `/mission` | ✅ merged from `member6-backend` (PR #2) |
 
 Add your routes in `src/App.tsx` **inside** the `<RequireSession>` block, so they are only reachable when signed in.
 
@@ -85,6 +85,10 @@ Measured indicators: `heartRate`, `spo2`, `systolic`, `diastolic`, `glucose`, `t
 | `GET /api/auth/session` · `POST /api/auth/sign-out` | who is signed in · end the session |
 | `GET /api/astronauts` · `POST /api/astronauts` | list · sign-up (validated; signs the new astronaut in) |
 | `DELETE /api/astronauts/:id` | `{ pin }`: their own PIN or the admin PIN. Also deletes their readings |
+| `GET/POST /api/action-steps` | ticked "do this now" steps and the alert acknowledgment (Member 5) |
+| `GET/POST /api/medical-notifications` | notify the onboard medical officer; the CMO sees everyone's (Member 5) |
+| `GET/POST /api/medical-reports` | Medical Report Packets queued for Earth; the CMO sees everyone's (Member 5) |
+| `GET/POST /api/crew-pulse` | daily private question. GET returns your answers, the **count** about you and who answered, never who flagged whom (Member 5) |
 | `POST /api/astronauts/:id/reset-pin` | `{ adminPin, newPin }`: forgotten PIN (stored PINs cannot be read). Also lifts a lockout |
 | `GET /api/readings?astronautId=` | your own readings (crew medical officer: anyone's). 401 / 403 otherwise |
 | `POST /api/readings` | add a reading to **your own** twin (`MANUAL_CHECKIN` or `SIMULATED_WATCH`) |
@@ -166,6 +170,33 @@ On Mars missions the twin knows about **solar conjunction** (Sun between Earth a
 reliable contact, as in NASA's Nov 11–25 2023 pause). Demo scenario: blackout from mission day 220 for 14 days,
 so day 214 shows a 6-day warning; the Twin View has a demo button to start it now. During the blackout the
 contact chain stays on board and reports are queued. Seriousness never changes.
+
+## Member 3: Organ pages (merged from `menna`)
+
+Menna's branch was a Next.js copy of the project; her own work is ported into `src/`: organ panel with
+**today vs your normal**, 30-day **trend chart** with a plain-English trend sentence, the **four answers**
+(what changed, why it matters, how serious, what to do), the rule behind each status, and NASA/CSA sources
+(`src/lib/orbit/sources.ts`, all 16 NASA links checked). Missing data shows **Unknown**. Linked: the page
+also reflects symptoms reported at check-in, and data sources name the real device (watch, cuff, thermometer,
+meter, dosimeter). Her shared edits were adopted for the whole app: official NASA hazard names and
+"approved onboard protocol here" placeholders instead of invented treatments or doses (plan §7).
+
+## Member 5: Action Center + Crew Pulse (merged from `member5-actions-crew`)
+
+Salma built the API (4 tables + endpoints). It was rebuilt on the signed-in session: identities in the request
+body are ignored, so nobody can tick steps, notify or vote as someone else, and Crew Pulse only returns counts.
+Her branch had no pages, so the Action Center and Crew Pulse pages from the original project were added and
+linked to her API: alerts by urgency with saved steps, an **emergency banner** for Act (reason, last valid
+values, "Do this now", notify the onboard medical officer, report packet, "I have read this" acknowledgment,
+plan §7), and the report packet can be downloaded or queued for Earth. The Crew Pulse question is worded
+gender-neutrally ("their usual self").
+
+## Member 6: Future Slider + Mission & Routine (merged from PR #2)
+
+Marvey's pages, with fixes: characters saved in Windows-1252 repaired; the Future Slider is labelled
+**"Illustration, not a prediction"** and lists its assumptions (1.25 %/month bone loss, 1.5 % muscle, loss ×
+(1 − g), plan prevents 75 %/80 %, 12 % shielding), as required by plan §6 and §12; the Mission page's exercise
+and mood reminders now use real data. The Future Slider uses `recharts` (run `npm install`).
 
 ## Scientific notes / honest limits
 - The twin compares readings with the person's **own** baseline. Reference ranges (AHA/ACC 2017 BP, AHA resting

@@ -1,8 +1,10 @@
 ﻿import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/orbit/app-shell'
 import { OrbitProvider, useOrbit } from '@/components/orbit/orbit-provider'
+import { ActionCenter } from '@/components/orbit/action-center'
 import { CheckInPage } from '@/components/orbit/check-in-page'
 import { ComingSoon } from '@/components/orbit/coming-soon'
+import { CrewPulse } from '@/components/orbit/crew-pulse'
 import { FutureSlider } from '@/components/orbit/future-slider'
 import { ManageCrew } from '@/components/orbit/manage-crew'
 import { MissionRoutine } from '@/components/orbit/mission-routine'
@@ -46,6 +48,9 @@ export function App() {
             <Route path="/organ/:organId" element={<OrganPage />} />
             {/* Member 4 · Daily check-in */}
             <Route path="/check-in" element={<CheckInPage />} />
+            {/* Member 5 · Action Center + Crew Pulse */}
+            <Route path="/actions" element={<ActionCenter />} />
+            <Route path="/crew" element={<CrewPulse />} />
             {/* Member 6 · Future Slider + Mission & Routine */}
             <Route path="/future" element={<FutureSlider />} />
             <Route path="/mission" element={<MissionRoutine />} />
