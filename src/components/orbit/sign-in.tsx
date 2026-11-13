@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChevronRight, Clock, Database, Globe2, Delete, Loader2, Lock, PenLine, RefreshCw, Search, Settings2, Watch, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MISSION_DAY, MISSION_NAME } from '@/lib/orbit/crew'
@@ -26,8 +26,6 @@ type Feedback =
 
 export function SignIn() {
   const navigate = useNavigate()
-  const location = useLocation()
-  const returnTo = (location.state as { from?: string } | null)?.from ?? '/'
   const { crew, profiles, signIn, signOut, sessionStatus, crewDbStatus, refreshCrew } = useOrbit()
   const signedInHere = useRef(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -82,7 +80,8 @@ export function SignIn() {
       void signIn(selected.id, next).then((result) => {
         setChecking(false)
         if (result.ok) {
-          navigate(returnTo, { replace: true })
+          // Shared tablet: every sign-in starts on the person's own Twin View, never on the previous user's page.
+          navigate('/', { replace: true })
           return
         }
         signedInHere.current = false
@@ -97,7 +96,7 @@ export function SignIn() {
         else if (result.reason === 'wrong-pin') setFeedback({ kind: 'wrong', attemptsLeft: result.attemptsLeft })
       })
     },
-    [selected, locked, checking, pin, signIn, navigate, returnTo],
+    [selected, locked, checking, pin, signIn, navigate],
   )
 
   // Physical keyboard support on the PIN screen (digits, Backspace, Escape).
