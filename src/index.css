@@ -195,11 +195,13 @@
   animation: orbit-planet-shine 40s linear infinite;
 }
 
+/* Falls from the top-left toward the bottom-right (35° matches the 340 × 238 px path), then fades out slowly. */
 @keyframes orbit-shooting-star {
   0% { transform: translate(0, 0) rotate(35deg) scaleX(0); opacity: 0; }
-  2% { opacity: 1; transform: translate(0, 0) rotate(35deg) scaleX(1); }
-  10% { transform: translate(260px, 180px) rotate(35deg) scaleX(0.4); opacity: 0; }
-  100% { opacity: 0; transform: translate(260px, 180px) rotate(35deg) scaleX(0); }
+  2% { transform: translate(14px, 10px) rotate(35deg) scaleX(1); opacity: 1; }
+  8% { opacity: 0.85; }
+  16% { transform: translate(340px, 238px) rotate(35deg) scaleX(0.5); opacity: 0; }
+  100% { transform: translate(340px, 238px) rotate(35deg) scaleX(0); opacity: 0; }
 }
 .orbit-shooting-star {
   position: absolute;
@@ -210,8 +212,7 @@
   transform-origin: right center;
   opacity: 0;
   pointer-events: none;
-  animation: orbit-shooting-star 13s ease-out infinite;
-  animation-delay: 2s;
+  animation: orbit-shooting-star 14s cubic-bezier(0.3, 0.6, 0.4, 1) infinite;
 }
 
 @keyframes orbit-fade-up {

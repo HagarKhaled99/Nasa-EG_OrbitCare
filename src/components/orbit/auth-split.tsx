@@ -124,8 +124,11 @@ function SpacePanel() {
       </svg>
 
       {/* Shooting stars */}
-      <span aria-hidden className="orbit-shooting-star" style={{ top: '14%', left: '20%' }} />
-      <span aria-hidden className="orbit-shooting-star" style={{ top: '38%', left: '55%', animationDelay: '6.5s' }} />
+      {/* Falling stars: start near the top-left, glide down-right and fade out gradually (staggered). */}
+      <span aria-hidden className="orbit-shooting-star" style={{ top: '3%', left: '8%', animationDelay: '1s' }} />
+      <span aria-hidden className="orbit-shooting-star" style={{ top: '10%', left: '24%', animationDelay: '4.5s' }} />
+      <span aria-hidden className="orbit-shooting-star" style={{ top: '1%', left: '40%', animationDelay: '8s' }} />
+      <span aria-hidden className="orbit-shooting-star" style={{ top: '20%', left: '2%', animationDelay: '11.5s' }} />
 
       {/* Orbits with a travelling satellite */}
       <svg
