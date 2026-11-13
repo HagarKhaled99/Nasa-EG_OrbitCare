@@ -21,6 +21,8 @@ Requires **Node 22.5+** (built-in `node:sqlite`; nothing extra to install).
 (The member2 branch used separate PINs per person: 2468 / 1357 / 8642 / 9753. We kept the single demo PIN
 shown on the sign-in screen. Change it with `ORBIT_DEMO_PIN` if the team prefers.)
 
+Manual test scenarios with expected results: [`docs/TEST_SCENARIOS.md`](docs/TEST_SCENARIOS.md).
+
 ## Users and the two portals
 
 ORBIT TWIN has two portals with the same crew server and database. Onboard decisions stay on board (the plan's

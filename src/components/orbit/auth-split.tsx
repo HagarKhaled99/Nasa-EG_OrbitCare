@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Orbit } from 'lucide-react'
 
-/** Deterministic star field so the panel looks identical on every render (and in screenshots). */
-const STARS = Array.from({ length: 70 }, (_, i) => {
-  const r = (n: number) => {
-    const x = Math.sin(i * 127.1 + n * 311.7) * 43758.5453
-    return x - Math.floor(x)
-  }
+/** Deterministic pseudo-random number in [0, 1) so the stars look identical on every render (and screenshots). */
+const rnd = (i: number, n: number) => {
+  const x = Math.sin(i * 127.1 + n * 311.7) * 43758.5453
+  return x - Math.floor(x)
+}
+
+/** Star field of the dark space panel. */
+const STARS = Array.from({ length: 105 }, (_, i) => {
+  const r = (n: number) => rnd(i, n)
   return {
     x: r(1) * 100,
     y: r(2) * 100,
@@ -18,6 +21,30 @@ const STARS = Array.from({ length: 70 }, (_, i) => {
     twinkle: r(7) < 0.6,
   }
 })
+
+/** A few brighter stars with a soft glow, spread over the panel. */
+const BRIGHT_STARS = [
+  { x: 82, y: 9, delay: 0 },
+  { x: 14, y: 34, delay: 1.8 },
+  { x: 63, y: 47, delay: 3.1 },
+  { x: 30, y: 71, delay: 0.9 },
+  { x: 90, y: 62, delay: 2.4 },
+]
+
+/** Faint lilac stars behind the sign-in / sign-up forms: decoration only, kept light so the form stays readable. */
+const FORM_STARS = Array.from({ length: 34 }, (_, i) => ({
+  x: rnd(i + 500, 1) * 100,
+  y: rnd(i + 500, 2) * 100,
+  size: rnd(i + 500, 3) < 0.8 ? 1.2 : 2,
+  opacity: 0.18 + rnd(i + 500, 4) * 0.3,
+  twinkle: rnd(i + 500, 5) < 0.35,
+  delay: rnd(i + 500, 6) * 6,
+}))
+const FORM_SPARKLES = [
+  { x: 92, y: 8, size: 14 },
+  { x: 6, y: 88, size: 11 },
+  { x: 95, y: 74, size: 9 },
+]
 
 const ORBIT_PATH = 'M -40 470 Q 260 180 640 290'
 
@@ -88,6 +115,12 @@ function SpacePanel() {
             }
           />
         ))}
+        {BRIGHT_STARS.map((s, i) => (
+          <g key={`b${i}`} className="orbit-twinkle" style={{ animationDelay: `${s.delay}s`, animationDuration: '5s', '--star-o': 1 } as React.CSSProperties}>
+            <circle cx={`${s.x}%`} cy={`${s.y}%`} r={7} fill="oklch(0.85 0.1 290)" opacity={0.18} />
+            <circle cx={`${s.x}%`} cy={`${s.y}%`} r={1.8} fill="white" />
+          </g>
+        ))}
       </svg>
 
       {/* Shooting stars */}
@@ -156,15 +189,42 @@ function SpacePanel() {
   )
 }
 
+/** Light star scatter behind the form side of the auth pages. */
+function FormStars() {
+  return (
+    <svg aria-hidden className="pointer-events-none absolute inset-0 size-full text-primary" preserveAspectRatio="none">
+      {FORM_STARS.map((s, i) => (
+        <circle
+          key={i}
+          cx={`${s.x}%`}
+          cy={`${s.y}%`}
+          r={s.size}
+          fill="currentColor"
+          opacity={s.opacity}
+          className={s.twinkle ? 'orbit-twinkle' : undefined}
+          style={s.twinkle ? ({ animationDelay: `${s.delay}s`, animationDuration: '6s', '--star-o': s.opacity } as React.CSSProperties) : undefined}
+        />
+      ))}
+      {FORM_SPARKLES.map((s, i) => (
+        <svg key={`s${i}`} x={`${s.x}%`} y={`${s.y}%`} width={s.size * 2} height={s.size * 2} viewBox="-12 -12 24 24" overflow="visible">
+          {/* four-point sparkle */}
+          <path d="M0 -12 L2 -2 L12 0 L2 2 L0 12 L-2 2 L-12 0 L-2 -2 Z" fill="currentColor" opacity={0.28} />
+        </svg>
+      ))}
+    </svg>
+  )
+}
+
 export function AuthSplit({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh">
       <SpacePanel />
-      <main className="flex min-w-0 flex-1 flex-col px-4 py-8 sm:px-8 md:px-12 lg:py-14">
-        <div className="mb-8 lg:hidden">
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden px-4 py-8 sm:px-8 md:px-12 lg:py-14">
+        <FormStars />
+        <div className="relative mb-8 lg:hidden">
           <Logo />
         </div>
-        <div className="mx-auto flex w-full max-w-[580px] flex-1 flex-col justify-center">{children}</div>
+        <div className="relative mx-auto flex w-full max-w-[580px] flex-1 flex-col justify-center">{children}</div>
       </main>
     </div>
   )
