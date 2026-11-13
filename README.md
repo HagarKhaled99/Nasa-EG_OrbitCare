@@ -103,10 +103,10 @@ After a rehearsal, use **Demo → "Reset my demo data"** for each astronaut you 
 | Member | Routes | Status |
 |---|---|---|
 | 1 — Sign in / sign up (Hagar) | `/login`, `/signup`, `/manage-crew` | ✅ done |
-| 2 — Twin View (Omar) | `/` | ✅ merged from `member2-twin-view` (incl. Earth-Independent Mode), linked to the database |
+| 2 — Twin View (Sara) | `/` | ✅ merged from `member2-twin-view` (incl. Earth-Independent Mode), linked to the database |
 | 3 — Organ pages (Menna) | `/organ/:organId` (7 organs) | ✅ merged from `menna` |
 | 4 — Check-in + data feed (Shahd) | `/check-in` | ✅ merged from `MEMBER4`, saves to the database |
-| 5 — Action Center + Crew Pulse (Salma) | `/actions`, `/crew` | ✅ API merged from `member5-actions-crew`; pages added from the original project and linked to it |
+| 5 — Action Center + Crew Pulse (Salma) | `/actions`, `/crew` | ✅ merged from `member5-actions-crew` (API + PR #3), pages linked to the database and sessions |
 | 6 — Future Slider + Mission (Marvey) | `/future`, `/mission` | ✅ merged from `member6-backend` (PR #2) |
 
 Add your routes in `src/App.tsx` **inside** the `<RequireSession>` block, so they are only reachable when signed in.
@@ -186,10 +186,10 @@ RAD), plus the demo events below. Checked against the app's own alert rules: **0
 
 ## Member 2: Twin View (merged from `member2-twin-view`)
 
-Omar's branch was written for Next.js (`app/api/*`, `next/link`, cookie sessions in route handlers). It was
+Sara's branch was written for Next.js (`app/api/*`, `next/link`, cookie sessions in route handlers). It was
 merged into this Vite app as follows:
 
-| From Omar's branch | In this app |
+| From Sara's branch | In this app |
 |---|---|
 | `components/orbit/twin-view.tsx` | `src/components/orbit/twin-view.tsx` (react-router links, `<img>`, shared session) |
 | `lib/orbit/twin.ts` | `src/lib/orbit/twin.ts` (+ SpO₂, glucose meter source) |
