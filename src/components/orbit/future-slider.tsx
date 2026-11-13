@@ -1,4 +1,9 @@
+/**
+ * Future Slider (Member 6, Marvey). Illustrative, research-informed scenario: NOT a prediction (plan §6, §12).
+ * The model (src/lib/orbit/health.ts) and every assumption it uses are listed on the page.
+ */
 import { useMemo, useState } from 'react'
+import { FlaskConical, Info } from 'lucide-react'
 import {
   CartesianGrid, Line, LineChart, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -88,7 +93,7 @@ function ProjectionCard({
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">Solid: no countermeasures � Dashed: with plan</p>
+      <p className="mt-2 text-xs text-muted-foreground">Solid: no countermeasures · Dashed: with plan</p>
     </section>
   )
 }
@@ -133,9 +138,16 @@ export function FutureSlider() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <p className="text-xs font-semibold uppercase tracking-widest text-primary">Future Slider � Time machine</p>
-        <h1 className="mt-2 text-3xl font-semibold">See where your body is heading</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Project bones, muscles and radiation across your mission timeline.</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary">Future Slider · Illustration, not a prediction</p>
+        <h1 className="mt-2 text-3xl font-semibold">What could your mission do to your body?</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          An illustrative, research-informed scenario for bones, muscles and radiation, with and without the countermeasure
+          plan. It shows the direction of the effect, not what will happen to you.
+        </p>
+        <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-dashed border-primary/50 px-3 py-1 font-mono text-[11px] font-semibold tracking-wider text-primary uppercase">
+          <FlaskConical className="size-3.5" aria-hidden />
+          Illustrative model · not clinical
+        </p>
       </header>
 
       <section className="rounded-2xl border border-border bg-card p-5">
@@ -152,14 +164,16 @@ export function FutureSlider() {
         </div>
         <input aria-label="Mission day" type="range" min="1" max={MAX_DAY} value={day} onChange={(e) => setDay(Number(e.target.value))} className="mt-6 w-full accent-primary" />
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span>Day 1</span><span>Today � {MISSION_DAY}</span><span>Day {MAX_DAY}</span>
+          <span>Day 1</span><span>Today · {MISSION_DAY}</span><span>Day {MAX_DAY}</span>
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <label className="flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/40 p-4">
             <span>
               <span className="block font-medium">Follow countermeasure plan</span>
-              <span className="text-xs text-muted-foreground">150 min daily exercise and protective measures</span>
+              <span className="text-xs text-muted-foreground">
+                {EXERCISE_PLAN_MINUTES} min exercise per day from today, and sleeping in the shielded crew quarters
+              </span>
             </span>
             <input type="checkbox" checked={plan} onChange={(e) => setPlan(e.target.checked)} className="size-5 accent-primary" />
           </label>
@@ -172,14 +186,14 @@ export function FutureSlider() {
                 </button>
               ))}
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">{env.gravityLabel} � {env.radiationPerDay} mSv/day</p>
+            <p className="mt-3 text-xs text-muted-foreground">{env.gravityLabel} · {env.radiationPerDay} mSv/day</p>
           </div>
         </div>
       </section>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="rounded-2xl border border-border bg-card p-5">
-          <h2 className="font-semibold">Your projected status on day {day}</h2>
+          <h2 className="font-semibold">Illustrative status on day {day}</h2>
           <div className="mt-5 grid grid-cols-1 gap-3">
             {([
               ['Bone density', current.boneStatus, `${current.bone.toFixed(1)}%`],
@@ -188,12 +202,14 @@ export function FutureSlider() {
             ] as [string, Status, string][]).map(([label, status, value]) => (
               <div key={label} className="flex items-center justify-between rounded-xl border border-border p-4">
                 <span className="text-sm">{label}</span>
-                <span className={`font-mono font-semibold ${STATUS_STYLE[status].text}`}>{value} � {STATUS_STYLE[status].label}</span>
+                <span className={`font-mono font-semibold ${STATUS_STYLE[status].text}`}>{value} · {STATUS_STYLE[status].label}</span>
               </div>
             ))}
           </div>
           <p className={`mt-4 rounded-xl border p-3 text-sm ${firstRedDay ? STATUS_STYLE.act.border : STATUS_STYLE.normal.border}`}>
-            {firstRedDay ? `Bone status reaches the action zone on day ${firstRedDay} under the selected plan.` : 'Bone status stays out of the action zone throughout this projection.'}
+            {firstRedDay
+              ? `In this scenario, bone reaches the action zone around day ${firstRedDay}${plan ? ' even with the plan' : ' without the plan'}.`
+              : `In this scenario, bone stays out of the action zone up to day ${MAX_DAY}${plan ? ' with the plan' : ''}.`}
           </p>
         </section>
 
@@ -203,7 +219,35 @@ export function FutureSlider() {
           <ProjectionCard title="Radiation dose" value={`${Math.round(current.dose)} mSv`} status={current.doseStatus} data={series} day={day} offKey="doseOff" onKey="doseOn" thresholds={[RADIATION_CAREER_LIMIT * 0.7, RADIATION_CAREER_LIMIT]} />
         </div>
       </div>
-      <p className="text-xs leading-relaxed text-muted-foreground">Projection model based on the project's health functions and selected mission environment. These are estimates, not clinical measurements.</p>
+      <section aria-labelledby="assumptions-title" className="rounded-2xl border border-dashed border-border bg-card p-5">
+        <h2 id="assumptions-title" className="flex items-center gap-2 font-semibold">
+          <Info className="size-4 text-primary" aria-hidden />
+          Assumptions behind this illustration
+        </h2>
+        <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-muted-foreground">
+          <li>
+            Bone: weight-bearing bone loses about 1.25 % per month in microgravity without countermeasures (NASA HRP reports
+            roughly 1–1.5 %). Muscle: about 1.5 % per month.
+          </li>
+          <li>
+            Loss scales with missing gravity (1 − g): full loss in weightlessness, about 62 % of it on Mars (0.38 g), 83 % on
+            the Moon (0.17 g).
+          </li>
+          <li>
+            The full exercise plan ({EXERCISE_PLAN_MINUTES} min/day) is assumed to prevent 75 % of bone loss and 80 % of
+            muscle loss. Up to today the twin uses your real average of the last 30 days.
+          </li>
+          <li>
+            Radiation: a constant daily dose for the chosen environment ({env.radiationPerDay} mSv/day, {env.source}).
+            Sleeping in shielded quarters is assumed to cut the future dose by 12 %. Career limit {RADIATION_CAREER_LIMIT} mSv
+            (NASA-STD-3001).
+          </li>
+          <li>
+            Watch/act lines are demo thresholds. Real bone, muscle and dose changes vary a lot between people and need scans
+            and dosimetry. This is not a medical prediction.
+          </li>
+        </ul>
+      </section>
     </div>
   )
 }

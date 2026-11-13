@@ -1,9 +1,10 @@
-﻿import { Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   Bell, Bone, CalendarCheck, Dumbbell, Flame, HeartPulse,
   Lock, Moon, Send, Shield, Stethoscope, Users,
 } from 'lucide-react'
 import { useOrbit } from './orbit-provider'
+import { EXERCISE_PLAN_MINUTES, MISSION_DAY } from '@/lib/orbit/crew'
 import { ENVIRONMENTS, formatDelay } from '@/lib/orbit/environments'
 import { cn } from '@/lib/utils'
 
@@ -22,15 +23,21 @@ function LocalReadinessRing({ value }: { value: number }) {
 }
 
 export function MissionRoutine() {
-  const { astronaut, readiness, streak, organs, checkedInToday, myVoteFor, reportsSent, env } = useOrbit()
+  const { astronaut, readiness, streak, organs, checkedInToday, myVoteFor, reportsSent, env, indicators, readings } = useOrbit()
+  // Real data instead of fixed ticks: exercise from today's watch/device minutes, mood from today's check-in.
+  const exerciseToday = indicators.exercise.value
+  const exerciseDone = Number.isFinite(exerciseToday) && exerciseToday >= EXERCISE_PLAN_MINUTES * 0.9
+  const moodLogged = readings.some(
+    (r) => r.mission_day === MISSION_DAY && r.data_origin === 'MANUAL_CHECKIN' && r.mood_1_to_5 !== null,
+  )
   const answeredPulse = myVoteFor(astronaut.pulseTargetId) !== undefined
   const organStatus = (id: string) => organs.find((item) => item.organ.id === id)?.status
 
   const routine = [
-    { time: '08:00', title: 'Morning vitals', detail: 'Heart rate, blood pressure, temperature and blood sugar', icon: Stethoscope, done: checkedInToday, href: '/check-in' },
-    { time: '12:30', title: 'Exercise block', detail: 'Treadmill and resistance training', icon: Dumbbell, done: true, href: '/organ/muscles' },
+    { time: '08:00', title: 'Morning vitals', detail: 'Blood pressure, temperature, blood sugar (heart rate and SpO₂ come from your watch)', icon: Stethoscope, done: checkedInToday, href: '/check-in' },
+    { time: '12:30', title: 'Exercise block', detail: `Treadmill and resistance training · ${Number.isFinite(exerciseToday) ? Math.round(exerciseToday) : '—'} of ${EXERCISE_PLAN_MINUTES} min today`, icon: Dumbbell, done: exerciseDone, href: '/organ/muscles' },
     { time: '18:00', title: 'Crew Pulse question', detail: 'Private daily question about a teammate', icon: Users, done: answeredPulse, href: '/crew' },
-    { time: '21:00', title: 'Sleep & mood log', detail: 'Wind-down routine and sleep preparation', icon: Moon, done: false, href: '/check-in' },
+    { time: '21:00', title: 'Sleep & mood log', detail: 'Log how you feel, then your wind-down routine', icon: Moon, done: moodLogged, href: '/check-in' },
   ]
 
   const badges = [
