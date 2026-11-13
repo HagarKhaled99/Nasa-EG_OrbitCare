@@ -417,6 +417,18 @@ function send(res, status, body) {
 
 export function startApiServer(port = API_PORT) {
   const server = createServer(createApi())
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`
+  ✖ Port ${port} is already in use. An older ORBIT TWIN server is probably still running.
+    Stop it with Ctrl+C in its terminal, or in PowerShell run:
+      Get-NetTCPConnection -LocalPort ${port} -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+    then run "npm run dev" again.
+`)
+      process.exit(1)
+    }
+    throw error
+  })
   server.listen(port, () => {
     console.log(`  ORBIT TWIN crew API  → http://localhost:${port}/api   (database: ${DB_PATH})`)
   })
