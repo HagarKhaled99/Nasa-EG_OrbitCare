@@ -1,15 +1,5 @@
+
 // ORBIT TWIN crew API. Plain Node http + built-in SQLite: no dependencies to install.
-//
-//   GET    /api/health                 → { ok, astronauts }
-//   GET    /api/astronauts             → list of astronauts (public fields only)
-//   POST   /api/astronauts             → create (sign-up). Body: NewCrewProfile. 201 / 400 / 409
-//   POST   /api/auth/sign-in           → { astronautId, pin } → { ok } | 401 wrong-pin | 423 locked
-//   DELETE /api/astronauts/:id         → body { pin } (that astronaut's PIN or the admin PIN). 204 / 403 / 404
-//   GET    /api/readings?astronautId=  → daily vitals, oldest first (31 SYNTHETIC_DEMO days for sample crew)
-//   POST   /api/readings               → save one reading (check-in / watch feed). 201 / 400 / 404
-//
-// Run alone:  node server/server.mjs      (port 4000, or PORT=xxxx)
-// Normally started together with the website by `npm run dev` (see scripts/dev.mjs).
 import { createServer } from 'node:http'
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
@@ -17,18 +7,15 @@ import { openDatabase, toPublic, DB_PATH } from './db.mjs'
 import { DEMO_ORIGIN, READING_COLUMNS, seedDemoReadings } from './demo-data.mjs'
 
 export const API_PORT = Number(process.env.PORT ?? 4000)
-/** Lets the crew medical officer / admin remove any profile. Change it with ORBIT_ADMIN_PIN. */
 const ADMIN_PIN = process.env.ORBIT_ADMIN_PIN ?? '2026'
 const MAX_ATTEMPTS = 5
 const LOCKOUT_MS = 60_000
-
-// ---------- validation (mirrors src/lib/orbit/baseline.ts and profiles.ts; keep them in sync) ----------
 
 const ROLES = ['Commander', 'Flight Engineer', 'Mission Specialist', 'Crew Medical Officer']
 const MISSION_IDS = ['ares-iv', 'artemis', 'iss']
 const SAMPLE_CREW_NAMES = ['sara haddad', 'ahmed nasser', 'lena fischer', 'omar rahimi']
 const SAMPLE_CREW_IDS = ['sara', 'ahmed', 'lena', 'omar']
-/** Plausible ranges for incoming readings (wider than baseline limits: these may be abnormal, just not impossible). */
+
 const READING_LIMITS = {
   heart_rate_bpm: [25, 220],
   spo2_pct: [50, 100],
@@ -44,17 +31,10 @@ const READING_ORIGINS = ['SIMULATED_WATCH', 'MANUAL_CHECKIN']
 const SENSOR_MODES = ['rest', 'motion', 'manual']
 const QUALITIES = ['good', 'poor', 'no-signal']
 const BASELINE_LIMITS = {
-  heartRate: [35, 120],
-  spo2: [85, 100],
-  sleep: [3, 12],
-  systolic: [80, 180],
-  diastolic: [45, 115],
-  temperature: [35, 38.5],
-  glucose: [50, 200],
-  grip: [10, 90],
-  vision: [1, 10],
-  mood: [1, 5],
-  exercise: [0, 600],
+  heartRate: [35, 120], spo2: [85, 100], sleep: [3, 12],
+  systolic: [80, 180], diastolic: [45, 115], temperature: [35, 38.5],
+  glucose: [50, 200], grip: [10, 90], vision: [1, 10],
+  mood: [1, 5], exercise: [0, 600],
 }
 const REQUIRED_BASELINE = ['heartRate', 'spo2', 'sleep', 'systolic', 'diastolic', 'temperature']
 const BASELINE_SOURCES = ['watch-preflight', 'manual', 'default', 'plan']
@@ -116,8 +96,6 @@ function validateNewAstronaut(body) {
   return { ...body, name }
 }
 
-// ---------- PIN hashing (scrypt, a memory-hard password hash built into Node) ----------
-
 function hashPin(pin, salt) {
   return scryptSync(pin, salt, 32).toString('hex')
 }
@@ -129,10 +107,7 @@ function pinMatches(pin, hash, salt) {
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
-// ---------- API ----------
-
 export function createApi(db = openDatabase()) {
-  // First start (or empty table): load the 31-day SYNTHETIC_DEMO dataset so every teammate has data.
   const demoCount = db.prepare('SELECT COUNT(*) AS n FROM readings WHERE data_origin = ?').get(DEMO_ORIGIN).n
   if (demoCount === 0) seedDemoReadings(db)
 
@@ -157,12 +132,41 @@ export function createApi(db = openDatabase()) {
       ON CONFLICT(astronaut_id) DO UPDATE SET failed = excluded.failed, locked_until = excluded.locked_until`),
     clearAttempts: db.prepare('DELETE FROM sign_in_attempts WHERE astronaut_id = ?'),
     audit: db.prepare('INSERT INTO audit_log (at, action, astronaut_id, detail) VALUES (?, ?, ?, ?)'),
+
+    // Member 5: Action Center
+    listSteps: db.prepare('SELECT alert_key, step_id, completed, updated_at FROM action_step_state WHERE astronaut_id = ? AND alert_key = ?'),
+    saveStep: db.prepare(`INSERT INTO action_step_state (astronaut_id, alert_key, step_id, completed, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(astronaut_id, alert_key, step_id)
+      DO UPDATE SET completed = excluded.completed, updated_at = excluded.updated_at`),
+
+    // Member 5: Medical notifications and reports
+    listNotifications: db.prepare('SELECT * FROM medical_notifications WHERE astronaut_id = ? ORDER BY created_at DESC'),
+    addNotification: db.prepare(`INSERT INTO medical_notifications (id, astronaut_id, alert_key, recipient, status, created_at)
+      VALUES (?, ?, ?, ?, 'queued', ?)`),
+    listReports: db.prepare('SELECT * FROM medical_reports WHERE astronaut_id = ? ORDER BY created_at DESC'),
+    addReport: db.prepare(`INSERT INTO medical_reports (id, astronaut_id, report_json, status, created_at)
+      VALUES (?, ?, ?, 'queued', ?)`),
+
+    // Member 5: Crew Pulse
+    listVotes: db.prepare('SELECT * FROM crew_pulse_votes WHERE mission_day = ?'),
+    saveVote: db.prepare(`INSERT INTO crew_pulse_votes (id, mission_day, from_id, target_id, seems_like_themselves, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(mission_day, from_id, target_id)
+      DO UPDATE SET seems_like_themselves = excluded.seems_like_themselves, created_at = excluded.created_at`),
   }
+
   const audit = (action, astronautId, detail = null) => q.audit.run(new Date().toISOString(), action, astronautId, detail)
+  const validAstronaut = (id) => SAMPLE_CREW_IDS.includes(id) || Boolean(q.get.get(id))
+  const requiredText = (value, field, max = 200) => {
+    if (typeof value !== 'string' || !value.trim() || value.length > max) {
+      throw new HttpError(400, `${field}: required text (max ${max} characters)`)
+    }
+    return value.trim()
+  }
 
   const routes = {
     'GET /api/health': () => ({ status: 200, body: { ok: true, astronauts: q.count.get().n } }),
-
     'GET /api/astronauts': () => ({ status: 200, body: q.list.all().map(toPublic) }),
 
     'POST /api/astronauts': ({ body }) => {
@@ -171,19 +175,10 @@ export function createApi(db = openDatabase()) {
       const id = `crew-${randomUUID().slice(0, 8)}`
       const salt = randomBytes(16).toString('hex')
       q.insert.run(
-        id,
-        input.name,
-        input.role,
-        input.dob,
-        input.missionId,
-        input.figure,
-        hashPin(input.pin, salt),
-        salt,
-        input.devices?.watch ?? null,
-        input.devices?.dosimeter ?? null,
-        JSON.stringify(input.baseline),
-        JSON.stringify(input.baselineSource ?? {}),
-        new Date().toISOString(),
+        id, input.name, input.role, input.dob, input.missionId, input.figure,
+        hashPin(input.pin, salt), salt, input.devices?.watch ?? null,
+        input.devices?.dosimeter ?? null, JSON.stringify(input.baseline),
+        JSON.stringify(input.baselineSource ?? {}), new Date().toISOString(),
       )
       audit('create', id, input.name)
       return { status: 201, body: toPublic(q.get.get(id)) }
@@ -197,7 +192,7 @@ export function createApi(db = openDatabase()) {
       if (state.locked_until && state.locked_until > now) {
         return { status: 423, body: { ok: false, reason: 'locked', lockedUntil: state.locked_until } }
       }
-      const failedSoFar = state.locked_until ? 0 : state.failed // lock expired → fresh start
+      const failedSoFar = state.locked_until ? 0 : state.failed
       if (pinMatches(body?.pin, row.pin_hash, row.pin_salt)) {
         q.clearAttempts.run(row.id)
         audit('sign-in-ok', row.id)
@@ -223,7 +218,7 @@ export function createApi(db = openDatabase()) {
 
     'POST /api/readings': ({ body }) => {
       const id = String(body?.astronaut_id ?? '')
-      if (!SAMPLE_CREW_IDS.includes(id) && !q.get.get(id)) throw new HttpError(404, 'Unknown astronaut')
+      if (!validAstronaut(id)) throw new HttpError(404, 'Unknown astronaut')
       const errors = []
       if (!Number.isInteger(body?.mission_day) || body.mission_day < 0 || body.mission_day > 2000) errors.push('mission_day: integer 0–2000')
       if (!READING_ORIGINS.includes(body?.data_origin)) errors.push(`data_origin: one of ${READING_ORIGINS.join(', ')}`)
@@ -246,6 +241,88 @@ export function createApi(db = openDatabase()) {
       }
       const info = q.insertReading.run(...READING_COLUMNS.map((c) => record[c]))
       return { status: 201, body: q.readingById.get(info.lastInsertRowid) }
+    },
+
+    // ---------- Member 5: Action Center ----------
+
+    'GET /api/action-steps': ({ query }) => {
+      const id = query.get('astronautId') ?? ''
+      const alertKey = query.get('alertKey') ?? ''
+      if (!id || !alertKey) throw new HttpError(400, 'astronautId and alertKey are required')
+      return { status: 200, body: q.listSteps.all(id, alertKey) }
+    },
+
+    'POST /api/action-steps': ({ body }) => {
+      const id = requiredText(body?.astronautId, 'astronautId', 100)
+      const alertKey = requiredText(body?.alertKey, 'alertKey', 100)
+      const stepId = requiredText(body?.stepId, 'stepId', 100)
+      if (typeof body?.completed !== 'boolean') throw new HttpError(400, 'completed must be true or false')
+      q.saveStep.run(id, alertKey, stepId, body.completed ? 1 : 0, new Date().toISOString())
+      return { status: 200, body: { ok: true } }
+    },
+
+    // ---------- Member 5: Medical notifications ----------
+
+    'GET /api/medical-notifications': ({ query }) => {
+      const id = query.get('astronautId') ?? ''
+      if (!id) throw new HttpError(400, 'astronautId is required')
+      return { status: 200, body: q.listNotifications.all(id) }
+    },
+
+    'POST /api/medical-notifications': ({ body }) => {
+      const id = requiredText(body?.astronautId, 'astronautId', 100)
+      const alertKey = requiredText(body?.alertKey, 'alertKey', 100)
+      const recipient = requiredText(body?.recipient, 'recipient', 120)
+      const notificationId = randomUUID()
+      const createdAt = new Date().toISOString()
+      q.addNotification.run(notificationId, id, alertKey, recipient, createdAt)
+      audit('medical-notification-queued', id, `${alertKey} → ${recipient}`)
+      return { status: 201, body: { id: notificationId, astronaut_id: id, alert_key: alertKey, recipient, status: 'queued', created_at: createdAt } }
+    },
+
+    // ---------- Member 5: Medical reports ----------
+
+    'GET /api/medical-reports': ({ query }) => {
+      const id = query.get('astronautId') ?? ''
+      if (!id) throw new HttpError(400, 'astronautId is required')
+      return {
+        status: 200,
+        body: q.listReports.all(id).map((row) => ({ ...row, report: JSON.parse(row.report_json) })),
+      }
+    },
+
+    'POST /api/medical-reports': ({ body }) => {
+      const id = requiredText(body?.astronautId, 'astronautId', 100)
+      if (!body?.report || typeof body.report !== 'object' || Array.isArray(body.report)) {
+        throw new HttpError(400, 'report must be an object')
+      }
+      const reportId = randomUUID()
+      const createdAt = new Date().toISOString()
+      q.addReport.run(reportId, id, JSON.stringify(body.report), createdAt)
+      audit('medical-report-queued', id, reportId)
+      return { status: 201, body: { id: reportId, astronaut_id: id, report: body.report, status: 'queued', created_at: createdAt } }
+    },
+
+    // ---------- Member 5: Crew Pulse ----------
+
+    'GET /api/crew-pulse': ({ query }) => {
+      const missionDay = Number(query.get('missionDay'))
+      if (!Number.isInteger(missionDay) || missionDay < 0) throw new HttpError(400, 'missionDay must be a non-negative integer')
+      return { status: 200, body: q.listVotes.all(missionDay) }
+    },
+
+    'POST /api/crew-pulse': ({ body }) => {
+      const missionDay = body?.missionDay
+      if (!Number.isInteger(missionDay) || missionDay < 0) throw new HttpError(400, 'missionDay must be a non-negative integer')
+      const fromId = requiredText(body?.fromId, 'fromId', 100)
+      const targetId = requiredText(body?.targetId, 'targetId', 100)
+      if (fromId === targetId) throw new HttpError(400, 'You cannot vote for yourself')
+      if (typeof body?.seemsLikeThemselves !== 'boolean') throw new HttpError(400, 'seemsLikeThemselves must be true or false')
+      const id = randomUUID()
+      const createdAt = new Date().toISOString()
+      q.saveVote.run(id, missionDay, fromId, targetId, body.seemsLikeThemselves ? 1 : 0, createdAt)
+      audit('crew-pulse-vote', fromId, `day ${missionDay}: ${targetId}`)
+      return { status: 200, body: { ok: true } }
     },
 
     'DELETE /api/astronauts/:id': ({ params, body }) => {
@@ -330,5 +407,4 @@ export function startApiServer(port = API_PORT) {
   return server
 }
 
-// Started directly: `node server/server.mjs`
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) startApiServer()
