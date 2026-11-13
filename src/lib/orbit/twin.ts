@@ -1,5 +1,5 @@
 /**
- * Twin View logic (Member 2, Omar). Ported from the member2-twin-view branch into the Vite app.
+ * Twin View logic (Member 2, Sara). Ported from the member2-twin-view branch into the Vite app.
  *
  * Pure, framework-free functions that turn the shared health state into the
  * snapshot the home screen renders. The same code runs in the browser (live,

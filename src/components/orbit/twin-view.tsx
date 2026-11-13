@@ -1,5 +1,5 @@
 /**
- * Twin View (Member 2, Omar): the ORBIT TWIN home screen.
+ * Twin View (Member 2, Sara): the ORBIT TWIN home screen.
  * Ported from the member2-twin-view branch (Next.js) into the Vite app: react-router links, plain <img>,
  * and the shared session from OrbitProvider instead of the Next.js session gate.
  *

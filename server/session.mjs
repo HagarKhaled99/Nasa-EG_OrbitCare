@@ -1,4 +1,4 @@
-// Server-side sessions (design by Member 2, Omar; rebuilt for the plain Node server).
+// Server-side sessions (design by Member 2, Sara; rebuilt for the plain Node server).
 //
 // After a correct PIN the server sets an httpOnly cookie holding the astronaut id, an expiry and an HMAC
 // signature. Page scripts cannot read it, and editing the id breaks the signature, so nobody can open
