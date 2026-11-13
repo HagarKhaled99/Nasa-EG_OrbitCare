@@ -1,3 +1,4 @@
+
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/orbit/app-shell'
 import { OrbitProvider, useOrbit } from '@/components/orbit/orbit-provider'
@@ -6,20 +7,29 @@ import { ManageCrew } from '@/components/orbit/manage-crew'
 import { SignIn } from '@/components/orbit/sign-in'
 import { SignUp } from '@/components/orbit/sign-up'
 import { TwinView } from '@/components/orbit/twin-view'
+import { ActionCenter } from '@/components/orbit/action-center'
+import { CrewPulse } from '@/components/orbit/crew-pulse'
 
-/** Every app page sits behind this guard. No session → /login (and come back after signing in). */
 function RequireSession() {
   const { session, crew, crewDbStatus } = useOrbit()
   const location = useLocation()
-  // Signed in as a database astronaut: wait for the crew list before rendering their twin.
-  if (session && crewDbStatus === 'loading' && !crew.some((c) => c.id === session.astronautId)) {
+
+  if (
+    session &&
+    crewDbStatus === 'loading' &&
+    !crew.some((c) => c.id === session.astronautId)
+  ) {
     return <p className="p-8 text-center text-muted-foreground">Loading crew…</p>
   }
-  // Session points at someone who no longer exists (removed, or database offline) → sign in again.
+
   if (session && !crew.some((c) => c.id === session.astronautId)) {
     return <Navigate to="/login" replace />
   }
-  if (!session) return <Navigate to="/login" replace state={{ from: location.pathname }} />
+
+  if (!session) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+
   return <Outlet />
 }
 
@@ -31,9 +41,11 @@ export function App() {
           <Route path="/login" element={<SignIn />} />
           <Route path="/signup" element={<SignUp />} />
           <Route path="/manage-crew" element={<ManageCrew />} />
+
           <Route element={<RequireSession />}>
             <Route path="/" element={<TwinView />} />
-            {/* Members 3–6: add your routes here, e.g. <Route path="/organ/:organId" element={<OrganPage />} /> */}
+            <Route path="/actions" element={<ActionCenter />} />
+            <Route path="/crew" element={<CrewPulse />} />
             <Route path="*" element={<ComingSoon />} />
           </Route>
         </Routes>
