@@ -14,6 +14,8 @@ import { MISSION_DAY } from '@/lib/orbit/crew'
 import { formatDelay, isDeepSpace } from '@/lib/orbit/environments'
 import { getRouting, type OrganState, type Status } from '@/lib/orbit/health'
 import { STATUS_STYLE } from '@/lib/orbit/status-style'
+import { organShownStatus } from '@/lib/orbit/organ-explain'
+import { CircleHelp } from 'lucide-react'
 import { SYMPTOMS } from '@/lib/orbit/symptoms'
 import {
   ACK_STEP,
@@ -82,7 +84,9 @@ type ActionState = ReturnType<typeof useActionState>
 
 export function ActionCenter() {
   const { alerts, organs, env } = useOrbit()
-  const clear = organs.filter((o) => o.status === 'normal')
+  // Missing data is never shown as "within your normal" (plan §12).
+  const clear = organs.filter((o) => organShownStatus(o) === 'normal')
+  const unknown = organs.filter((o) => organShownStatus(o) === 'unknown')
   const actions = useActionState()
   const urgent = alerts.filter((a) => a.status === 'act')
 
@@ -169,6 +173,33 @@ export function ActionCenter() {
           </table>
         </div>
       </section>
+
+      {unknown.length > 0 && (
+        <section aria-labelledby="unknown-title" className="rounded-2xl border border-dashed border-border bg-card p-5">
+          <h2 id="unknown-title" className="flex items-center gap-2 font-semibold">
+            <CircleHelp className="size-4 text-muted-foreground" aria-hidden />
+            Missing readings: status unknown
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Your twin cannot tell if these systems are normal. Take the missing readings in your daily check-in.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {unknown.map((o) => (
+              <Link
+                key={o.organ.id}
+                to={`/organ/${o.organ.id}`}
+                className="flex items-center gap-2 rounded-full border border-dashed border-border px-3 py-1.5 text-sm hover:bg-secondary"
+              >
+                <span aria-hidden className="size-2 rounded-full border border-dashed border-muted-foreground" />
+                {o.organ.name}
+              </Link>
+            ))}
+            <ButtonLink to="/check-in" variant="outline" className="h-9">
+              Open Daily Check-in
+            </ButtonLink>
+          </div>
+        </section>
+      )}
 
       {clear.length > 0 && (
         <section aria-labelledby="clear-title">

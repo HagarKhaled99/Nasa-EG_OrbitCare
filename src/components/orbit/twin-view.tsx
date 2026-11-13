@@ -337,7 +337,11 @@ function TodayRead({
       {isNewProfile && (
         <p className="ml-7 rounded-xl border border-primary/30 bg-primary/5 p-3 text-xs leading-relaxed">
           <span className="font-semibold">Your twin is still learning your normal.</span> It compares you with the
-          personal baseline you recorded at sign-up. Trends become reliable as your daily check-ins build up.
+          personal baseline you recorded at sign-up. Systems without readings show Unknown until your first{' '}
+          <Link to="/check-in" className="font-medium text-primary underline-offset-2 hover:underline">
+            daily check-in
+          </Link>
+          ; trends become reliable as your check-ins build up.
         </p>
       )}
     </section>

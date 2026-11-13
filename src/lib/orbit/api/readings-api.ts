@@ -36,6 +36,9 @@ export interface Reading {
   note: string | null
   /** Symptoms reported at check-in (ids from src/lib/orbit/symptoms.ts), or null. */
   symptoms: SymptomId[] | null
+  glucose_mg_dl: number | null
+  grip_kg: number | null
+  vision_lines: number | null
 }
 
 export type NewReading = Partial<Omit<Reading, 'id' | 'data_origin'>> & {
@@ -84,6 +87,13 @@ export async function saveReading(reading: NewReading): Promise<Reading> {
 }
 
 /** Offline fallback: the same SYNTHETIC_DEMO dataset shipped as a static file. */
+/** Rehearsal helper: delete YOUR check-ins, injected demo readings, ticked steps, notifications and reports. */
+export async function resetMyDemoData(): Promise<{ removedReadings: number }> {
+  const { status, data } = await call('POST', '/demo/reset')
+  if (status !== 200) fail(status, data)
+  return data as { removedReadings: number }
+}
+
 export async function fetchDemoDatasetFile(): Promise<{ metadata: unknown; records: Omit<Reading, 'id'>[] }> {
   const res = await fetch('/data/orbit_twin_demo.json')
   if (!res.ok) throw new Error('Demo dataset file not found')
@@ -102,6 +112,9 @@ const COLUMN_TO_INDICATOR = {
   sleep_hours: 'sleep',
   mood_1_to_5: 'mood',
   activity_min: 'exercise',
+  glucose_mg_dl: 'glucose',
+  grip_kg: 'grip',
+  vision_lines: 'vision',
 } as const satisfies Partial<Record<keyof Reading, MeasuredIndicatorId>>
 
 /**

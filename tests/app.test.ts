@@ -1,0 +1,137 @@
+// App logic tests (no browser needed): twin status from database readings, missing data = Unknown,
+// symptoms, live watch adapter, organ explanations, Mars blackout, honest history for new astronauts.
+import { CREW, type Astronaut } from '../src/lib/orbit/crew'
+import { getEnvironment, type EnvironmentId } from '../src/lib/orbit/environments'
+import { computeIndicators, computeOrgans, readinessScore, worstStatus } from '../src/lib/orbit/health'
+import { buildTwinSnapshot } from '../src/lib/orbit/twin'
+import { buildAnswers, organShownStatus, sourceLabel } from '../src/lib/orbit/organ-explain'
+import { SYMPTOMS, symptomLevels, type SymptomId } from '../src/lib/orbit/symptoms'
+import { latestGood, nextWatchSample } from '../src/lib/orbit/sensor-adapter'
+import { toReadingHistory, type Reading } from '../src/lib/orbit/api/readings-api'
+import { profileToAstronaut } from '../src/lib/orbit/profiles'
+import dataset from '../public/data/orbit_twin_demo.json'
+
+type T = (name: string, ok: boolean, detail?: unknown) => void
+
+const rowsFor = (id: string) => (dataset as { records: Reading[] }).records.filter((r) => r.astronaut_id === id)
+
+function twin(
+  a: Astronaut,
+  opts: { env?: EnvironmentId; extra?: Partial<Reading>[]; symptoms?: SymptomId[]; blackout?: boolean; invent?: boolean } = {},
+) {
+  const env = getEnvironment(opts.env ?? 'mars-transit')
+  const rows = [...rowsFor(a.id), ...((opts.extra ?? []) as Reading[])]
+  const indicators = computeIndicators({
+    astronaut: a,
+    env,
+    overrides: {},
+    votes: a.crewVotes,
+    readings: toReadingHistory(rows),
+    inventHistory: opts.invent ?? true,
+  })
+  const reported = symptomLevels(opts.symptoms ?? [])
+  const organs = computeOrgans(indicators).map((o) =>
+    reported[o.organ.id] ? { ...o, status: worstStatus([o.status, reported[o.organ.id]!.level]) } : o,
+  )
+  const snap = buildTwinSnapshot({
+    astronaut: a,
+    env,
+    indicators,
+    organs,
+    readiness: readinessScore(organs, false),
+    checkedInToday: false,
+    forceBlackout: opts.blackout,
+    symptoms: opts.symptoms,
+  })
+  return { indicators, organs, snap }
+}
+
+const crew = (id: string) => CREW.find((c) => c.id === id)!
+const card = (s: ReturnType<typeof twin>['snap'], organ: string) => s.organs.find((o) => o.id === organ)!
+const ind = (s: ReturnType<typeof twin>['snap'], organ: string, id: string) => card(s, organ).indicators.find((i) => i.id === id)!
+const injected = (a: string, values: Partial<Reading>): Partial<Reading> => ({
+  astronaut_id: a,
+  mission_day: 214,
+  timestamp_utc: '2026-11-13T10:00:00Z',
+  data_origin: 'SIMULATED_WATCH',
+  quality: 'good',
+  ...values,
+})
+
+export function run(t: T) {
+  // ---------- demo dataset ----------
+  const sara = twin(crew('sara')).snap
+  t('Sara: heart rate 73 → Watch (trend demo)', ind(sara, 'heart', 'heartRate').value === 73 && ind(sara, 'heart', 'heartRate').status === 'watch')
+  const lena = twin(crew('lena')).snap
+  t('Lena: fever 37.9 °C → Act', ind(lena, 'blood', 'temperature').status === 'act')
+  t('Lena: missing SpO₂ → Unknown, never normal', ind(lena, 'heart', 'spo2').status === 'unknown' && ind(lena, 'heart', 'spo2').value === null)
+  const omar = twin(crew('omar')).snap
+  t('Omar starts healthy (heart normal)', card(omar, 'heart').status === 'normal', card(omar, 'heart').status)
+  const omarEmergency = twin(crew('omar'), { extra: [injected('omar', { spo2_pct: 87 })] }).snap
+  t('demo injection SpO₂ 87 → Omar heart Act', card(omarEmergency, 'heart').status === 'act' && omarEmergency.overall === 'act')
+  const saraWorse = twin(crew('sara'), { extra: [injected('sara', { heart_rate_bpm: 77, sleep_hours: 5.3 })] }).snap
+  t('demo "worsening reading" moves Sara from Watch to Act', card(saraWorse, 'heart').status === 'act' && card(saraWorse, 'brain').status === 'act')
+
+  // ---------- missing data never silently normal ----------
+  const ahmedNoSpo2 = twin(crew('ahmed'), { extra: [injected('ahmed', { spo2_pct: null, quality: 'no-signal' })] })
+  t('a check-in row without SpO₂ does not erase the watch value', ind(ahmedNoSpo2.snap, 'heart', 'spo2').status !== 'unknown')
+  const fresh = profileToAstronaut({
+    id: 'crew-test01',
+    name: 'Nour Adel',
+    role: 'Flight Engineer',
+    dob: '1990-02-02',
+    missionId: 'iss',
+    figure: 'female',
+    devices: { watch: null, dosimeter: null },
+    baseline: { ...crew('sara').baseline },
+    baselineSource: {},
+    createdAt: '2026-11-13T00:00:00Z',
+  })
+  const newbie = twin(fresh, { invent: false })
+  t('new astronaut: no invented history (heart rate has no points)', newbie.indicators.heartRate.history.length === 0)
+  t('new astronaut: systems without readings show Unknown', newbie.organs.some((o) => organShownStatus(o) === 'unknown'))
+  t('new astronaut: no crew answers → Crew Pulse Unknown, not "seems fine"', !Number.isFinite(newbie.indicators.crewPulse.value))
+  t('new astronaut: bone model still works and says it assumes the plan', /Assumes your exercise plan/.test(newbie.indicators.boneDensity.message))
+  t(
+    'readiness drops for Unknown systems',
+    readinessScore(newbie.organs, false, newbie.organs.filter((o) => organShownStatus(o) === 'unknown').length) < 90,
+  )
+  t('new astronaut gets a Crew Pulse teammate from the crew', CREW.some((c) => c.id === fresh.pulseTargetId))
+
+  // ---------- symptoms (plan §7) ----------
+  const ahmed = twin(crew('ahmed')).snap
+  const chest = twin(crew('ahmed'), { symptoms: ['chest-pain'] }).snap
+  t('Ahmed heart normal without symptoms', card(ahmed, 'heart').status === 'normal')
+  t('urgent symptom (chest pain) → heart Act although numbers are normal', card(chest, 'heart').status === 'act')
+  t('headache → brain Watch', card(twin(crew('ahmed'), { symptoms: ['headache'] }).snap, 'brain').status === 'watch')
+
+  // ---------- organ explanations (Member 3) ----------
+  const ahmedChest = twin(crew('ahmed'), { symptoms: ['chest-pain'] }).organs.find((o) => o.organ.id === 'heart')!
+  const answers = buildAnswers(ahmedChest, SYMPTOMS.filter((s) => s.id === 'chest-pain'))
+  t('organ page: Act + headline names the symptom', organShownStatus(ahmedChest) === 'act' && /chest pain/.test(answers.changed.headline))
+  t('organ steps use protocol placeholders, no invented doses', answers.todo.steps.every((s) => !/\d+\s?(mg|mL|IU)\b/.test(s)), answers.todo.steps)
+  t('data sources name the real devices', sourceLabel('systolic').includes('cuff') && sourceLabel('glucose').includes('meter') && sourceLabel('radiationDose').includes('dosimeter'))
+
+  // ---------- live watch adapter ----------
+  const packets = Array.from({ length: 2000 }, (_, i) => nextWatchSample({ heartRate: 64, spo2: 88 }, i))
+  const good = packets.filter((p) => p.spo2Quality === 'good')
+  const motion = packets.filter((p) => p.spo2Quality === 'motion')
+  t('about 1 in 8 packets taken while moving', motion.length > 150 && motion.length < 350, motion.length)
+  t('good SpO₂ packets stay near today’s value (87–89)', good.every((p) => p.spo2! >= 87 && p.spo2! <= 89))
+  t('no-signal centre → packet without a value', nextWatchSample({ heartRate: 70, spo2: null }).spo2 === null)
+  t(
+    'motion packets are never used',
+    latestGood([
+      { at: 1, heartRate: 60, spo2: 97, heartRateQuality: 'good', spo2Quality: 'good' },
+      { at: 2, heartRate: 95, spo2: 91, heartRateQuality: 'motion', spo2Quality: 'motion' },
+    ]).heartRate?.value === 60,
+  )
+
+  // ---------- environments and Mars blackout (Member 2) ----------
+  const mars = twin(crew('omar'), { extra: [injected('omar', { spo2_pct: 87 })] }).snap
+  t('Mars day 214: blackout warning 6 days ahead', mars.comms.state === 'pre-blackout' && mars.comms.daysUntilBlackout === 6)
+  const blackout = twin(crew('omar'), { extra: [injected('omar', { spo2_pct: 87 })], blackout: true }).snap
+  t('blackout: contact stays on board, seriousness unchanged', blackout.overall === 'act' && blackout.contactChain[1] === 'Crew medical officer')
+  const iss = twin(crew('omar'), { env: 'iss', extra: [injected('omar', { spo2_pct: 87 })], blackout: true }).snap
+  t('ISS: no blackout; same Act status, different contact', iss.comms.state === 'reachable' && iss.overall === 'act' && iss.contactChain.join() !== blackout.contactChain.join())
+}

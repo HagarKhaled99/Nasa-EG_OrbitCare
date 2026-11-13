@@ -15,6 +15,19 @@ export default defineConfig({
   server: {
     proxy: { '/api': `http://localhost:${API_PORT}` },
   },
+  // Charts (recharts) and React load as separate files, so pages without charts open faster on the tablet.
+  build: {
+    // Served from the same laptop (no internet download), ~150 kB gzipped: fine for this app.
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          charts: ['recharts'],
+          react: ['react', 'react-dom', 'react-router-dom'],
+        },
+      },
+    },
+  },
   preview: {
     proxy: { '/api': `http://localhost:${API_PORT}` },
   },

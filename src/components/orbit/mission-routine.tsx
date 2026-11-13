@@ -7,6 +7,7 @@ import { useOrbit } from './orbit-provider'
 import { EXERCISE_PLAN_MINUTES, MISSION_DAY } from '@/lib/orbit/crew'
 import { ENVIRONMENTS, formatDelay } from '@/lib/orbit/environments'
 import { cn } from '@/lib/utils'
+import { organShownStatus } from '@/lib/orbit/organ-explain'
 
 function LocalReadinessRing({ value }: { value: number }) {
   const safeValue = Math.max(0, Math.min(100, value))
@@ -87,14 +88,26 @@ export function MissionRoutine() {
             </div>
           </div>
           <ul className="mt-5 flex flex-col gap-2 text-sm">
-            {organs.map((item) => (
-              <li key={item.organ.id} className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground">{item.organ.name}</span>
-                <span className={cn('font-mono', item.status === 'normal' ? 'text-status-ok' : item.status === 'watch' ? 'text-status-watch' : 'text-status-act')}>
-                  {item.status === 'normal' ? '0' : item.status === 'watch' ? '−9' : '−22'}
-                </span>
-              </li>
-            ))}
+            {organs.map((item) => {
+              const shown = organShownStatus(item)
+              return (
+                <li key={item.organ.id} className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">{item.organ.name}</span>
+                  <span
+                    className={cn(
+                      'font-mono',
+                      shown === 'normal' && 'text-status-ok',
+                      shown === 'unknown' && 'text-muted-foreground',
+                      shown === 'watch' && 'text-status-watch',
+                      shown === 'act' && 'text-status-act',
+                    )}
+                  >
+                    {/* same points as readinessScore(): watch −9, act −22, unknown −6 */}
+                    {shown === 'normal' ? '0' : shown === 'unknown' ? 'Unknown −6' : shown === 'watch' ? '−9' : '−22'}
+                  </span>
+                </li>
+              )
+            })}
             <li className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground">Today’s check-in</span>
               <span className={cn('font-mono', checkedInToday ? 'text-status-ok' : 'text-status-watch')}>{checkedInToday ? '0' : '−4'}</span>

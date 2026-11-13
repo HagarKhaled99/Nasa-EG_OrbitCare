@@ -19,6 +19,9 @@
 //   GET      /api/crew-pulse?missionDay= → { mine, aboutMe: { flags, total }, answered: [ids] }. Never who flagged whom
 //   POST     /api/crew-pulse            → { missionDay, targetId, seemsLikeThemselves } (from = you)
 //
+//   POST   /api/demo/reset              → rehearsal helper: deletes YOUR check-ins, injected demo readings,
+//                                         ticked steps, notifications and reports (never the SYNTHETIC_DEMO data)
+//
 // Sessions: signed httpOnly cookie (server/session.mjs, design by Member 2). Everyone signs in here.
 //
 // Run alone:  node server/server.mjs      (port 4000, or PORT=xxxx)
@@ -28,7 +31,7 @@ import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from 'node:crypt
 import { pathToFileURL } from 'node:url'
 import { openDatabase, toPublic, DB_PATH } from './db.mjs'
 import { clearedSessionCookie, createSessions, loadSecret, readCookie, sessionCookie } from './session.mjs'
-import { DEMO_ORIGIN, READING_COLUMNS, seedDemoReadings } from './demo-data.mjs'
+import { DEMO_DATA_VERSION, DEMO_ORIGIN, READING_COLUMNS, seedDemoReadings } from './demo-data.mjs'
 
 export const API_PORT = Number(process.env.PORT ?? 4000)
 /** Lets the crew medical officer / admin remove any profile. Change it with ORBIT_ADMIN_PIN. */
@@ -78,6 +81,9 @@ const READING_LIMITS = {
   mood_1_to_5: [1, 5],
   activity_min: [0, 600],
   radiation_dose_msv_daily: [0, 1000],
+  glucose_mg_dl: [20, 600],
+  grip_kg: [1, 120],
+  vision_lines: [0, 10],
 }
 const READING_ORIGINS = ['SIMULATED_WATCH', 'MANUAL_CHECKIN']
 const SENSOR_MODES = ['rest', 'motion', 'manual']
@@ -193,8 +199,10 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
   const demoHash = hashPin(DEMO_PIN, demoSalt)
 
   // First start (or empty table): load the 31-day SYNTHETIC_DEMO dataset so every teammate has data.
+  // First start, or the demo dataset changed: (re)load the SYNTHETIC_DEMO rows. Real check-ins are never touched.
+  const demoVersion = db.prepare("SELECT value FROM meta WHERE key = 'demo_version'").get()?.value
   const demoCount = db.prepare('SELECT COUNT(*) AS n FROM readings WHERE data_origin = ?').get(DEMO_ORIGIN).n
-  if (demoCount === 0) seedDemoReadings(db)
+  if (demoCount === 0 || demoVersion !== DEMO_DATA_VERSION) seedDemoReadings(db)
 
   const q = {
     readings: db.prepare('SELECT * FROM readings WHERE astronaut_id = ? ORDER BY mission_day ASC, timestamp_utc ASC'),
@@ -507,6 +515,17 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
       q.saveVote.run(randomUUID(), missionDay, me.astronautId, targetId, body.seemsLikeThemselves ? 1 : 0, new Date().toISOString())
       audit('crew-pulse-vote', me.astronautId, `day ${missionDay}`) // not who or what: the answer stays private
       return { status: 200, body: { ok: true } }
+    },
+
+    'POST /api/demo/reset': ({ req }) => {
+      const me = requireSession(req)
+      const id = me.astronautId
+      const removed = db.prepare('DELETE FROM readings WHERE astronaut_id = ? AND data_origin <> ?').run(id, DEMO_ORIGIN).changes
+      db.prepare('DELETE FROM action_step_state WHERE astronaut_id = ?').run(id)
+      db.prepare('DELETE FROM medical_notifications WHERE astronaut_id = ?').run(id)
+      db.prepare('DELETE FROM medical_reports WHERE astronaut_id = ?').run(id)
+      audit('demo-reset', id, `${removed} readings`)
+      return { status: 200, body: { ok: true, removedReadings: removed } }
     },
 
     'DELETE /api/astronauts/:id': ({ params, body, req }) => {

@@ -61,7 +61,16 @@ export function openDatabase(path = DB_PATH) {
       sensor_mode                   TEXT,            -- rest | motion | manual
       quality                       TEXT,            -- good | poor | no-signal
       note                          TEXT,
-      symptoms                      TEXT             -- JSON array of symptom ids (check-in), NULL if none
+      symptoms                      TEXT,            -- JSON array of symptom ids (check-in), NULL if none
+      glucose_mg_dl                 REAL,            -- fingerstick meter (check-in)
+      grip_kg                       REAL,            -- grip self-test (check-in)
+      vision_lines                  REAL             -- near-vision card (check-in)
+    );
+
+    -- Small key/value table (e.g. which version of the demo dataset is loaded).
+    CREATE TABLE IF NOT EXISTS meta (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS readings_by_astronaut ON readings (astronaut_id, mission_day);
 
@@ -117,7 +126,14 @@ export function openDatabase(path = DB_PATH) {
   `)
   // Upgrade older databases: add columns that were introduced later (keeps existing rows).
   const readingColumns = db.prepare('PRAGMA table_info(readings)').all().map((c) => c.name)
-  if (!readingColumns.includes('symptoms')) db.exec('ALTER TABLE readings ADD COLUMN symptoms TEXT')
+  for (const [column, type] of [
+    ['symptoms', 'TEXT'],
+    ['glucose_mg_dl', 'REAL'],
+    ['grip_kg', 'REAL'],
+    ['vision_lines', 'REAL'],
+  ]) {
+    if (!readingColumns.includes(column)) db.exec(`ALTER TABLE readings ADD COLUMN ${column} ${type}`)
+  }
   return db
 }
 

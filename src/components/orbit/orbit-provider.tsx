@@ -16,7 +16,8 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { CREW, MISSION_DAY, type Astronaut, type CrewVote } from '@/lib/orbit/crew'
-import { environmentFor, profileToAstronaut, type CrewProfile, type NewCrewProfile } from '@/lib/orbit/profiles'
+import { environmentFor, isSampleCrew, profileToAstronaut, type CrewProfile, type NewCrewProfile } from '@/lib/orbit/profiles'
+import { organShownStatus } from '@/lib/orbit/organ-explain'
 import { forgetSignIn, recordSignIn, type Session, type SignInResult } from '@/lib/orbit/auth/auth-service'
 import {
   createAstronaut,
@@ -26,7 +27,14 @@ import {
   signInAstronaut,
   signOutSession,
 } from '@/lib/orbit/api/crew-api'
-import { fetchReadings, saveReading, toReadingHistory, type NewReading, type Reading } from '@/lib/orbit/api/readings-api'
+import {
+  fetchReadings,
+  resetMyDemoData,
+  saveReading,
+  toReadingHistory,
+  type NewReading,
+  type Reading,
+} from '@/lib/orbit/api/readings-api'
 import { getEnvironment, type EnvironmentId, type MissionEnvironment } from '@/lib/orbit/environments'
 import {
   computeIndicators,
@@ -90,6 +98,9 @@ const CHECK_IN_COLUMN: Partial<Record<MeasuredIndicatorId, keyof NewReading>> = 
   sleep: 'sleep_hours',
   mood: 'mood_1_to_5',
   exercise: 'activity_min',
+  glucose: 'glucose_mg_dl',
+  grip: 'grip_kg',
+  vision: 'vision_lines',
 }
 
 interface OrbitContextValue {
@@ -132,6 +143,19 @@ interface OrbitContextValue {
   watch: WatchStream
   /** Symptoms reported at today's check-in. */
   symptomsToday: SymptomId[]
+  /** True for astronauts who signed up themselves: no invented history, their twin builds from real readings. */
+  isNewAstronaut: boolean
+  /**
+   * Judge-demo controls (plan §11). Every injected value is a SIMULATED_WATCH row labelled as a demo injection.
+   *  - worsening: the watch sends a reading well away from your normal (heart rate up, sleep down)
+   *  - emergency: the watch sends a low SpO₂ with good signal (Omar's demo event)
+   *  - reset: remove your own check-ins and injected readings so a rehearsal can start again
+   */
+  demo: {
+    sendWorseningReading: () => Promise<boolean>
+    injectEmergency: () => Promise<boolean>
+    reset: () => Promise<boolean>
+  }
   /** Answer today's Crew Pulse question about a crewmate (saved on the server as you). */
   castVote: (targetId: string, seemsLikeThemselves: boolean) => Promise<void>
   myVoteFor: (targetId: string) => boolean | undefined
@@ -411,9 +435,73 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
     return Array.from({ length: total }, (_, i) => ({ fromId: `crewmate-${i + 1}`, seemsLikeThemselves: i >= flags }))
   }, [pulse, votesFor, astronautId])
   const checkedInToday =
-    Boolean(overrides[astronautId]) ||
+    Object.keys(overrides[astronautId] ?? {}).length > 0 ||
     readings.some((r) => r.data_origin === 'MANUAL_CHECKIN' && r.mission_day === MISSION_DAY)
   const readingHistory = useMemo(() => toReadingHistory(readings), [readings])
+  const isNewAstronaut = !isSampleCrew(astronautId)
+
+  // Check-in streak: consecutive mission days with a manual check-in, ending today (or yesterday).
+  const checkInStreak = useMemo(() => {
+    const days = new Set(readings.filter((r) => r.data_origin === 'MANUAL_CHECKIN').map((r) => r.mission_day))
+    let day = days.has(MISSION_DAY) ? MISSION_DAY : MISSION_DAY - 1
+    let count = 0
+    while (days.has(day)) {
+      count++
+      day--
+    }
+    return count
+  }, [readings])
+
+  // ---------- judge-demo controls ----------
+  const injectWatch = useCallback(
+    async (values: Partial<NewReading>, note: string) => {
+      try {
+        await saveReading({
+          astronaut_id: astronautId,
+          mission_day: MISSION_DAY,
+          data_origin: 'SIMULATED_WATCH',
+          sensor_mode: 'rest',
+          quality: 'good',
+          note: `DEMO INJECTION: ${note}`,
+          ...values,
+        })
+        await loadReadings(astronautId)
+        setSamples([]) // the live feed restarts from the new value
+        return true
+      } catch {
+        return false
+      }
+    },
+    [astronautId, loadReadings],
+  )
+
+  const demo = useMemo(
+    () => ({
+      sendWorseningReading: () =>
+        injectWatch(
+          {
+            heart_rate_bpm: Math.round(astronaut.baseline.heartRate * 1.24),
+            sleep_hours: Math.round(astronaut.baseline.sleep * 0.7 * 10) / 10,
+          },
+          'worsening heart rate and sleep',
+        ),
+      injectEmergency: () =>
+        injectWatch({ spo2_pct: Math.min(87, Math.round(astronaut.baseline.spo2 - 11)) }, 'low SpO2 with good signal'),
+      reset: async () => {
+        try {
+          await resetMyDemoData()
+          setOverrides((prev) => ({ ...prev, [astronautId]: {} }))
+          setLocalSymptoms((prev) => ({ ...prev, [astronautId]: [] }))
+          setSamples([])
+          await loadReadings(astronautId)
+          return true
+        } catch {
+          return false
+        }
+      },
+    }),
+    [injectWatch, astronaut, astronautId, loadReadings],
+  )
 
   // Today's centre for the simulated watch: the database value for today (null = no signal today).
   const watchCentre = useMemo<WatchCentre>(() => {
@@ -465,6 +553,8 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
       overrides: { ...liveOverrides, ...(overrides[astronaut.id] ?? {}) },
       votes,
       readings: readingHistory,
+      // Sample crew may fall back to their demo history (crew.ts); signed-up astronauts never get invented data.
+      inventHistory: !isNewAstronaut,
     })
     // Urgent symptoms raise their body system even when the numbers look normal (plan §7).
     const reported = symptomLevels(symptomsToday)
@@ -485,8 +575,12 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
       indicators,
       organs,
       alerts,
-      readiness: readinessScore(organs, checkedInToday),
-      streak: astronaut.streak + (checkedInToday ? 1 : 0),
+      readiness: readinessScore(
+        organs,
+        checkedInToday,
+        organs.filter((o) => organShownStatus(o) === 'unknown').length,
+      ),
+      streak: isNewAstronaut ? checkInStreak : astronaut.streak + (checkedInToday ? 1 : 0),
       checkedInToday,
       votes,
       readings,
@@ -501,6 +595,8 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
       submitCheckIn,
       watch: { samples, good: watchGood, stale: watchStale, paused: watchPaused, setPaused: setWatchPaused },
       symptomsToday,
+      isNewAstronaut,
+      demo,
       castVote,
       myVoteFor: (targetId) =>
         voteChanges[targetId]?.[astronaut.id] ?? pulse?.mine.find((v) => v.targetId === targetId)?.seemsLikeThemselves,
@@ -536,6 +632,9 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
     submitCheckIn,
     liveOverrides,
     symptomsToday,
+    isNewAstronaut,
+    checkInStreak,
+    demo,
     samples,
     watchGood,
     watchStale,

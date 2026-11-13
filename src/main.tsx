@@ -26,3 +26,13 @@ createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </StrictMode>,
 )
+
+// Offline support (plan §6): in production builds (`npm run start`) a service worker keeps the app shell and
+// demo data available without a network. Not in `npm run dev`, where it would get in the way of live reload.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* offline mode unavailable in this browser: the app still works online */
+    })
+  })
+}

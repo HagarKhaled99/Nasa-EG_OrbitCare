@@ -6,7 +6,9 @@ check-ins into a personal health twin for each astronaut. Runs fully on one lapt
 
 ```bash
 npm install
-npm run dev            # website http://localhost:5173 + crew server http://localhost:4000 (one command)
+npm run dev            # while coding: website http://localhost:5173 + crew server :4000 (one command)
+npm run start          # for the judge demo: production build + offline service worker + crew server
+npm test               # 67 checks: server (sign-in, privacy, data) + app logic (twin, Unknown, symptoms)
 npm run build          # type-check + production build
 npm run db             # print the database (astronauts, readings, audit log). Use a 2nd terminal
 npm run data:generate  # rebuild the 31-day demo dataset (JSON + CSV + database)
@@ -18,6 +20,30 @@ Requires **Node 22.5+** (built-in `node:sqlite`; nothing extra to install).
 **Demo sign-in:** any of the four sample crew, PIN **2026**. Admin PIN for removing profiles: **2026**.
 (The member2 branch used separate PINs per person: 2468 / 1357 / 8642 / 9753. We kept the single demo PIN
 shown on the sign-in screen. Change it with `ORBIT_DEMO_PIN` if the team prefers.)
+
+## Judge demo script (2–3 min, plan §11)
+
+Run `npm run start`, open the address it prints, and use the **Demo** button (bottom-right) when told.
+
+1. **Sign in as Sara** (PIN 2026), Mars transit, mission day 214. Twin View: heart and brain are orange (Watch).
+   Point out the live watch (sidebar dot) and "Colors compare today with your own pre-flight baseline".
+2. **Demo → "Watch sends a worsening reading".** Heart rate jumps and sleep drops: heart and brain turn red
+   without a refresh, and the full-screen emergency alert opens. Click **"I have read this"**.
+3. **Open the heart** (tap it on the body): today vs normal, 30-day trend chart, the four plain-English answers,
+   and where the science comes from.
+4. **Sign out, sign in as Omar** (2026). Everything is green. **Demo → "Inject emergency (low SpO₂)"**: the
+   full-screen alert names the reason and last valid values → **Open Action Center**: "Do this now", **Notify
+   onboard medical officer**, **Medical Report Packet** (download or queue for Earth).
+5. **Change the environment** in the top bar from Mars transit to ISS: the contact changes from the crew medical
+   officer to a live call with the flight surgeon; the alert stays Act. Back on Mars, the Twin View warns of the
+   solar-conjunction blackout in 6 days ("Demo: start the blackout now" shows Earth-independent mode).
+6. **Future Slider:** move the day slider and toggle the exercise plan; point to "Illustration, not a prediction"
+   and the assumptions list.
+7. **Turn Wi-Fi off:** pages, the twin and the check-in keep working (everything runs on this laptop; the
+   service worker keeps the app shell). Optional: show **Daily Check-in** with an urgent symptom (chest pain)
+   turning a normal heart red.
+
+After a rehearsal, use **Demo → "Reset my demo data"** for each astronaut you changed.
 
 ## How the pieces link together
 
@@ -115,7 +141,7 @@ RAD), plus the demo events below. Checked against the app's own alert rules: **0
 | Sara | HR 62 → 73 bpm, sleep → 6.2 h over 5 days | heart + brain **Watch** (trend) |
 | Ahmed | exercise down ~15 % over 6 days | muscles + bones **Watch** |
 | Lena (CMO) | 37.9 °C, HR +12 %, mood 3, **SpO₂ missing** | blood **Act**, SpO₂ **Unknown** |
-| Omar | **SpO₂ 88 %** (good signal) | heart **Act** → emergency / Action Center |
+| Omar | starts **healthy**; the emergency (SpO₂ 87 %, good signal) is **injected live** with the Demo button | heart **Act** → full-screen alert / Action Center |
 
 ## Member 1: sign in and sign up
 
@@ -161,8 +187,8 @@ Saving stores a `MANUAL_CHECKIN` row (manual values, mood, symptoms) and a `SIMU
 Changes while porting: watch fields never show the person's normal value when no reading exists (plan §12),
 BP/temperature/glucose are not labelled as watch readings, input sanity checks (e.g. systolic 60–250, top number
 above bottom), the How & Why card uses the browser's `<dialog>`, and saving reports honestly whether it reached
-the crew database or stayed on the tablet. Grip, vision and glucose update the twin but are not columns of the
-`readings` table yet.
+the crew database or stayed on the tablet. Blood sugar, grip and vision are stored too (`glucose_mg_dl`,
+`grip_kg`, `vision_lines`).
 
 ## Member 2 update: Earth-Independent Mode
 
@@ -197,6 +223,19 @@ Marvey's pages, with fixes: characters saved in Windows-1252 repaired; the Futur
 **"Illustration, not a prediction"** and lists its assumptions (1.25 %/month bone loss, 1.5 % muscle, loss ×
 (1 − g), plan prevents 75 %/80 %, 12 % shielding), as required by plan §6 and §12; the Mission page's exercise
 and mood reminders now use real data. The Future Slider uses `recharts` (run `npm install`).
+
+## Finishing pass: gaps closed
+
+| Gap | Now |
+|---|---|
+| Missing data could look normal (new sign-ups got invented history; Action Center / Mission used the old status) | New astronauts never get invented data: systems without readings are **Unknown** until the first check-in; Action Center lists them under "Missing readings"; readiness counts Unknown (−6 each) |
+| Emergency banner only inside the Action Center | **Full-screen emergency alert** on every page for unacknowledged Act alerts (reason, last valid values, Do this now, notify medical officer, acknowledge) |
+| Judge demo steps 2 and 4 could not be shown live | **Demo** panel: worsening watch reading, inject emergency, reset; Omar starts healthy |
+| Offline | Service worker in production (`npm run start`): app shell, images and demo dataset cached; API data never cached |
+| Blood sugar, grip, vision only on the tablet | Stored in the database |
+| Fixed streak; Crew Pulse teammate always Sara | Streak counted from real check-ins for signed-up astronauts; Crew Pulse teammate chosen per person |
+| No sign-out on phones | Sign-out button in the top bar on small screens |
+| Tests only on one laptop | `npm test` (67 checks) |
 
 ## Scientific notes / honest limits
 - The twin compares readings with the person's **own** baseline. Reference ranges (AHA/ACC 2017 BP, AHA resting

@@ -164,7 +164,16 @@ export interface TwinInput {
   votes: CrewVote[]
   /** Database readings. When present for an indicator they replace the built-in generated history. */
   readings?: ReadingHistory
+  /**
+   * true (default): with no database readings, fall back to the generated demo history in crew.ts (sample crew).
+   * false: never invent history. A measurement without data is UNKNOWN until a check-in or watch reading arrives
+   * (used for astronauts who signed up themselves, plan §12: missing data never silently normal).
+   */
+  inventHistory?: boolean
 }
+
+/** The last 30 mission days, used for model curves (bone, muscle, radiation) even when no readings exist. */
+const DAY_GRID = Array.from({ length: HISTORY_DAYS }, (_, i) => MISSION_DAY - HISTORY_DAYS + 1 + i)
 
 function historyFromReadings(points: Array<{ day: number; value: number | null }>, todayOverride?: number): Point[] {
   const history = points
@@ -179,7 +188,7 @@ function historyFromReadings(points: Array<{ day: number; value: number | null }
 }
 
 export function computeIndicators(input: TwinInput): Record<IndicatorId, IndicatorState> {
-  const { astronaut, env, overrides, votes, readings } = input
+  const { astronaut, env, overrides, votes, readings, inventHistory = true } = input
   const result = {} as Record<IndicatorId, IndicatorState>
   const measuredIds = Object.keys(astronaut.baseline) as MeasuredIndicatorId[]
 
@@ -188,8 +197,12 @@ export function computeIndicators(input: TwinInput): Record<IndicatorId, Indicat
     const baseline = astronaut.baseline[id]
     const fromDb = readings?.[id]
     const history =
-      fromDb && fromDb.length > 0 ? historyFromReadings(fromDb, overrides[id]) : measuredHistory(astronaut, id, overrides[id])
-    const value = history[history.length - 1].value
+      fromDb && fromDb.length > 0
+        ? historyFromReadings(fromDb, overrides[id])
+        : inventHistory
+          ? measuredHistory(astronaut, id, overrides[id])
+          : historyFromReadings([], overrides[id]) // only today's live/check-in value, if any
+    const value = history.length > 0 ? history[history.length - 1].value : Number.NaN
     const { deviation, status } = deviationStatus(value, baseline, meta)
     const daysOff = countDaysOff(history, baseline, meta)
     const missing = !Number.isFinite(value)
@@ -202,14 +215,20 @@ export function computeIndicators(input: TwinInput): Record<IndicatorId, Indicat
       status,
       history,
       daysOff,
-      message: missing ? 'No valid reading today. Measure again.' : describe(meta, deviation, status, daysOff),
+      message: missing
+        ? history.length === 0
+          ? 'No readings yet. Your twin starts learning after your first check-in.'
+          : 'No valid reading today. Measure again.'
+        : describe(meta, deviation, status, daysOff),
     }
   }
 
-  const exerciseHistory = result.exercise.history
-  const exerciseValues = exerciseHistory.map((p) => p.value).filter(Number.isFinite)
-  const avgExercise = exerciseValues.reduce((sum, v) => sum + v, 0) / Math.max(1, exerciseValues.length)
-  const exerciseRatio = avgExercise / EXERCISE_PLAN_MINUTES
+  const exerciseValues = result.exercise.history.map((p) => p.value).filter(Number.isFinite)
+  const exerciseKnown = exerciseValues.length > 0
+  // No exercise data yet: the bone/muscle model assumes the plan is followed, and says so in its message.
+  const exerciseRatio = exerciseKnown
+    ? exerciseValues.reduce((sum, v) => sum + v, 0) / exerciseValues.length / EXERCISE_PLAN_MINUTES
+    : 1
 
   const computedSeries: Array<[IndicatorId, (day: number) => number]> = [
     ['boneDensity', (day) => boneDensityAt(day, env, exerciseRatio)],
@@ -217,7 +236,7 @@ export function computeIndicators(input: TwinInput): Record<IndicatorId, Indicat
   ]
   for (const [id, fn] of computedSeries) {
     const meta = INDICATORS[id]
-    const history = exerciseHistory.map((p) => ({ day: p.day, value: roundTo(fn(p.day), 1) }))
+    const history = DAY_GRID.map((day) => ({ day, value: roundTo(fn(day), 1) }))
     const value = history[history.length - 1].value
     const { deviation, status } = deviationStatus(value, 100, meta)
     result[id] = {
@@ -230,16 +249,14 @@ export function computeIndicators(input: TwinInput): Record<IndicatorId, Indicat
       history,
       daysOff: 0,
       message:
-        status === 'normal'
+        (status === 'normal'
           ? `Projected ${Math.abs(roundTo(deviation * 100, 1))}% below pre-flight — within the safe range.`
-          : `Projected ${Math.abs(roundTo(deviation * 100, 1))}% below your pre-flight scan.`,
+          : `Projected ${Math.abs(roundTo(deviation * 100, 1))}% below your pre-flight scan.`) +
+        (exerciseKnown ? '' : ' Assumes your exercise plan: no exercise data yet.'),
     }
   }
 
-  const doseHistory = exerciseHistory.map((p) => ({
-    day: p.day,
-    value: Math.round(radiationAt(p.day, env)),
-  }))
+  const doseHistory = DAY_GRID.map((day) => ({ day, value: Math.round(radiationAt(day, env)) }))
   const dose = doseHistory[doseHistory.length - 1].value
   const doseStatus = radiationStatus(dose)
   result.radiationDose = {
@@ -255,22 +272,27 @@ export function computeIndicators(input: TwinInput): Record<IndicatorId, Indicat
   }
 
   const flags = votes.filter((v) => !v.seemsLikeThemselves).length
+  const noAnswers = votes.length === 0
   const pulseStatus = crewPulseStatus(flags)
   const selfMood = result.mood.value
   const mismatch = flags >= 2 && selfMood >= 4
   result.crewPulse = {
     id: 'crewPulse',
     meta: INDICATORS.crewPulse,
-    value: flags,
+    value: noAnswers ? Number.NaN : flags,
     baseline: 0,
     deviation: flags / Math.max(1, votes.length),
     status: pulseStatus,
-    history: exerciseHistory.slice(-7).map((p, i, arr) => ({
-      day: p.day,
-      value: i === arr.length - 1 ? flags : i >= arr.length - 3 ? Math.max(0, flags - 1) : 0,
-    })),
+    history: noAnswers
+      ? []
+      : DAY_GRID.slice(-7).map((day, i, arr) => ({
+          day,
+          value: i === arr.length - 1 ? flags : i >= arr.length - 3 ? Math.max(0, flags - 1) : 0,
+        })),
     daysOff: 0,
-    message: mismatch
+    message: noAnswers
+      ? 'No Crew Pulse answers about you yet today.'
+      : mismatch
       ? `You report feeling fine, but ${flags} of ${votes.length} crewmates feel you are not quite yourself.`
       : flags === 0
         ? 'Your crew says you seem like yourself.'
@@ -293,8 +315,8 @@ export function computeOrgans(indicators: Record<IndicatorId, IndicatorState>): 
   })
 }
 
-export function readinessScore(organs: OrganState[], checkedInToday: boolean) {
-  let score = 100
+export function readinessScore(organs: OrganState[], checkedInToday: boolean, unknownSystems = 0) {
+  let score = 100 - unknownSystems * 6
   for (const o of organs) {
     if (o.status === 'watch') score -= 9
     if (o.status === 'act') score -= 22

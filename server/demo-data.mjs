@@ -12,6 +12,8 @@
 // Deterministic: a fixed seed per astronaut, so every teammate gets identical data.
 
 export const DEMO_ORIGIN = 'SYNTHETIC_DEMO'
+/** Bump when the generated dataset changes: the server then reloads the demo rows (real check-ins are kept). */
+export const DEMO_DATA_VERSION = '2'
 export const DEMO_DAYS = 31
 export const LAST_MISSION_DAY = 214 // keep in sync with MISSION_DAY in src/lib/orbit/crew.ts
 /** Mission day 214 = 13 Nov 2026, 07:00 UTC (morning check-in). Fixed so the data never shifts. */
@@ -77,7 +79,8 @@ const CREW = [
  *  - Ahmed: missed exercise. Activity drops ~15 % over the last 6 days (countermeasure demo).
  *  - Lena:  early infection pattern. Temperature 37.9 °C and HR +12 % on the last 2 days. SpO₂ MISSING today
  *           (sensor gave no signal), so the app must show UNKNOWN, never normal.
- *  - Omar:  one-day low SpO₂ of 88 % today with a good-quality reading (emergency demo, below the 90 % demo limit).
+ *  - Omar:  starts healthy. His emergency (low SpO₂) is injected live with the demo controls during the pitch
+ *           (plan §11 step 4), so judges see the twin change from green to red.
  */
 function applyEvents(id, back, r) {
   const ramp = (days) => (back < days ? (days - back) / days : 0) // 0 → 1 as we approach today
@@ -98,11 +101,6 @@ function applyEvents(id, back, r) {
       r.quality = 'no-signal'
       r.note = 'SpO₂ missing: optical sensor reported no signal. Must display UNKNOWN.'
     }
-  }
-  if (id === 'omar' && back === 0) {
-    r.spo2_pct = 88
-    r.sensor_mode = 'rest'
-    r.note = 'Demo emergency event: low SpO₂ with good signal quality.'
   }
 }
 
@@ -208,6 +206,9 @@ export const READING_COLUMNS = [
   'quality',
   'note',
   'symptoms',
+  'glucose_mg_dl',
+  'grip_kg',
+  'vision_lines',
 ]
 
 /** Replace all SYNTHETIC_DEMO rows in the database with a freshly generated set (idempotent). */
@@ -220,6 +221,9 @@ export function seedDemoReadings(db) {
   try {
     db.prepare('DELETE FROM readings WHERE data_origin = ?').run(DEMO_ORIGIN)
     for (const r of rows) insert.run(...READING_COLUMNS.map((c) => r[c] ?? null))
+    db.prepare("INSERT INTO meta (key, value) VALUES ('demo_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
+      DEMO_DATA_VERSION,
+    )
     db.exec('COMMIT')
   } catch (error) {
     db.exec('ROLLBACK')
@@ -247,7 +251,7 @@ export const DATASET_METADATA = {
     sara: 'Gradual change: resting HR up ~18 %, sleep down ~17 % over the last 5 days',
     ahmed: 'Exercise drop: activity down ~15 % over the last 6 days',
     lena: 'Fever pattern (37.9 °C, HR +12 %) and SpO₂ MISSING on day 214 → must show UNKNOWN',
-    omar: 'One-day low SpO₂ (88 %) on day 214 → emergency demo',
+    omar: 'Starts healthy; the emergency (SpO₂ 87 %) is injected live with the demo controls',
   },
   units: {
     heart_rate_bpm: 'beats/min (watch, at rest)',
