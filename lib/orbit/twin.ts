@@ -261,6 +261,132 @@ const FIGURE_POSITION: Record<Astronaut['figure'], Partial<Record<OrganId, { x: 
 }
 
 // ---------------------------------------------------------------------------
+// Earth-Independent Mode: comms windows and the Mars solar-conjunction blackout.
+// NASA facts (sources in CONJUNCTION_SOURCES):
+//  - Mars solar conjunction happens about every 2 years.
+//  - The Sun's hot, ionized gas can corrupt radio signals, so NASA pauses all
+//    commands to Mars for about two weeks (Nov 11-25, 2023; Aug 28-Sep 7, 2019).
+//  - For about 2 days Mars is fully behind the Sun and there is no contact at all.
+// The mission-day dates below are a DEMO SCENARIO (this mission is fictional);
+// the length matches NASA's 2023 two-week pause.
+// ---------------------------------------------------------------------------
+
+export type CommsState = 'reachable' | 'pre-blackout' | 'blackout'
+
+/** Demo scenario: blackout from mission day 220 for 14 days (NASA's 2023 pause was 14 days). */
+export const CONJUNCTION_DEMO = { startDay: 220, lengthDays: 14 }
+
+/** NASA pages the conjunction facts come from. */
+export const CONJUNCTION_SOURCES = [
+  {
+    label: 'NASA · What is Mars solar conjunction?',
+    url: 'https://www.nasa.gov/solar-system/whats-mars-solar-conjunction-and-why-does-it-matter/',
+  },
+  {
+    label: 'NASA JPL · Mars fleet lies low (Nov 11-25, 2023)',
+    url: 'https://www.jpl.nasa.gov/news/nasas-mars-fleet-will-still-conduct-science-while-lying-low/',
+  },
+] as const
+/** Start warning the crew this many days before the blackout. */
+const PREP_DAYS = 7
+const CONJUNCTION_ENVS: EnvironmentId[] = ['mars-transit', 'mars-base', 'mars-rover']
+
+const ALWAYS_IN_VIEW: Partial<Record<EnvironmentId, string>> = {
+  iss: 'Relay satellites keep the ISS in contact with Earth almost all the time.',
+  'lunar-orbit': 'Only short gaps when Gateway passes behind the Moon.',
+  'moon-base': 'Earth stays in the sky over the near side of the Moon.',
+}
+
+export interface CommsWindow {
+  state: CommsState
+  /** True where a solar-conjunction blackout can happen (Mars). */
+  hasConjunction: boolean
+  /** True when the demo button forced the blackout. */
+  demo: boolean
+  blackoutStartDay: number | null
+  blackoutEndDay: number | null
+  daysUntilBlackout: number | null
+  daysUntilRestored: number | null
+  title: string
+  detail: string
+  /** What to do before the blackout starts (only before it). */
+  prepAdvice: string | null
+  /** What the flight surgeon on Earth can see right now. */
+  earthSees: string
+}
+
+export function commsWindow(
+  env: MissionEnvironment,
+  missionDay: number,
+  flaggedSystems: string[],
+  forceBlackout = false,
+): CommsWindow {
+  const delay = formatDelay(env.delaySeconds)
+  const hasConjunction = CONJUNCTION_ENVS.includes(env.id)
+
+  if (!hasConjunction) {
+    return {
+      state: 'reachable',
+      hasConjunction,
+      demo: false,
+      blackoutStartDay: null,
+      blackoutEndDay: null,
+      daysUntilBlackout: null,
+      daysUntilRestored: null,
+      title: 'Earth is in contact',
+      detail: ALWAYS_IN_VIEW[env.id] ?? 'No long blackout is expected here.',
+      prepAdvice: null,
+      earthSees: `Your data, ${delay} behind you`,
+    }
+  }
+
+  const start = forceBlackout ? missionDay : CONJUNCTION_DEMO.startDay
+  const end = start + CONJUNCTION_DEMO.lengthDays
+  const inBlackout = missionDay >= start && missionDay < end
+
+  if (inBlackout) {
+    const daysLeft = end - missionDay
+    return {
+      state: 'blackout',
+      hasConjunction,
+      demo: forceBlackout,
+      blackoutStartDay: start,
+      blackoutEndDay: end,
+      daysUntilBlackout: 0,
+      daysUntilRestored: daysLeft,
+      title: `No reliable contact with Earth · back in ${daysLeft} days`,
+      detail:
+        "The Sun is between Earth and Mars. Its hot gas scrambles radio signals, so messages can't be trusted, and for about 2 days there is no signal at all. Your twin keeps watching, you follow the onboard protocol with your crew medical officer, and reports wait for Earth.",
+      prepAdvice: null,
+      earthSees: `Nothing reliable until day ${end}. Reports are queued.`,
+    }
+  }
+
+  const daysUntil = start - missionDay
+  const soon = daysUntil > 0 && daysUntil <= PREP_DAYS
+  const list = flaggedSystems.join(' and ').toLowerCase()
+  return {
+    state: soon ? 'pre-blackout' : 'reachable',
+    hasConjunction,
+    demo: false,
+    blackoutStartDay: start,
+    blackoutEndDay: end,
+    daysUntilBlackout: daysUntil,
+    daysUntilRestored: null,
+    title: soon ? `Blackout in ${daysUntil} days` : 'Earth is in contact',
+    detail: soon
+      ? `From day ${start} to day ${end} the Sun will scramble contact with Earth for ${CONJUNCTION_DEMO.lengthDays} days, like NASA's two-week pause in November 2023.`
+      : `Messages take ${delay} each way.`,
+    prepAdvice: soon
+      ? flaggedSystems.length > 0
+        ? `Talk to the flight surgeon about your ${list} in the next ${daysUntil} days, while Earth can still answer.`
+        : `Send any questions for the flight surgeon in the next ${daysUntil} days, while Earth can still answer.`
+      : null,
+    earthSees: `Your data, ${delay} behind you`,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot types
 // ---------------------------------------------------------------------------
 
@@ -345,8 +471,10 @@ export interface TwinSnapshot {
   activeHazards: HazardId[]
   mission: MissionProfile
   routing: Routing
-  /** Who is contacted, in order, for the current status and distance. */
+  /** Who is contacted, in order, for the current status, distance and comms window. */
   contactChain: string[]
+  /** Earth-Independent Mode: can Earth be reached, and when is the next blackout. */
+  comms: CommsWindow
   lastUpdate: {
     checkedInToday: boolean
     lastCheckIn: string
@@ -426,7 +554,14 @@ function summarize(
   }
 }
 
-function chainFor(status: TwinStatus, deep: boolean): string[] {
+function chainFor(status: TwinStatus, deep: boolean, blackout: CommsWindow | null = null): string[] {
+  if (blackout) {
+    // No Earth contact: same seriousness, but everything is handled on board.
+    if (status === 'act') return ['You', 'Crew medical officer', `Earth · queued until day ${blackout.blackoutEndDay}`]
+    if (status === 'watch') return ['You', 'Crew medical officer']
+    if (status === 'unknown') return ['You', 'Repeat the measurement']
+    return ['You', 'Self-care']
+  }
   if (status === 'act') return deep ? ['You', 'Crew medical officer', 'Earth · report packet'] : ['You', 'Flight surgeon · live call']
   if (status === 'watch') return deep ? ['You', 'Crew medical officer'] : ['You', 'Flight surgeon · message']
   if (status === 'unknown') return ['You', 'Repeat the measurement']
@@ -449,6 +584,8 @@ export interface TwinInputs {
   readiness: number
   checkedInToday: boolean
   now?: Date
+  /** Demo button: pretend the Mars blackout has started today. */
+  forceBlackout?: boolean
 }
 
 export function buildTwinSnapshot(input: TwinInputs): TwinSnapshot {
@@ -495,8 +632,15 @@ export function buildTwinSnapshot(input: TwinInputs): TwinSnapshot {
           ? `${counts.unknown} ${plural(counts.unknown, 'system is', 'systems are')} missing data.`
           : 'Everything is within your normal.'
 
-  const subline =
-    counts.act + counts.watch > 0
+  const flaggedNames = cards.filter((c) => c.status === 'watch' || c.status === 'act').map((c) => c.shortName)
+  const comms = commsWindow(env, MISSION_DAY, flaggedNames, input.forceBlackout ?? false)
+  const blackout = comms.state === 'blackout' ? comms : null
+
+  const subline = blackout
+    ? counts.act + counts.watch > 0
+      ? `Earth can't be reliably reached for ${blackout.daysUntilRestored} days (the Sun is between Earth and Mars). Your crew medical officer is your first contact.`
+      : `Earth can't be reliably reached for ${blackout.daysUntilRestored} days. Your twin keeps watching and queues your reports until contact returns.`
+    : counts.act + counts.watch > 0
       ? deep
         ? `Earth is ${delay} away, so your first contact is the ${routing.contact.toLowerCase()}.`
         : `You have near real-time contact with Earth. Next step: ${routing.title.toLowerCase()}.`
@@ -548,7 +692,8 @@ export function buildTwinSnapshot(input: TwinInputs): TwinSnapshot {
       effects: environmentEffects(env, exerciseRatioFrom(indicators)),
     },
     routing,
-    contactChain: chainFor(overall, deep),
+    contactChain: chainFor(overall, deep, blackout),
+    comms,
     lastUpdate: {
       checkedInToday,
       lastCheckIn: checkedInToday ? 'Today' : astronaut.lastCheckIn,
@@ -563,7 +708,12 @@ export function buildTwinSnapshot(input: TwinInputs): TwinSnapshot {
  * Server-side entry point used by GET /api/twin. Computes from the shared demo
  * data with no local check-in overrides (those live on the tablet).
  */
-export function computeTwinSnapshot(astronaut: Astronaut, envId: EnvironmentId, now?: Date) {
+export function computeTwinSnapshot(
+  astronaut: Astronaut,
+  envId: EnvironmentId,
+  now?: Date,
+  options: { forceBlackout?: boolean } = {},
+) {
   const env = getEnvironment(envId)
   const indicators = computeIndicators({ astronaut, env, overrides: {}, votes: astronaut.crewVotes })
   const organs = computeOrgans(indicators)
@@ -576,6 +726,7 @@ export function computeTwinSnapshot(astronaut: Astronaut, envId: EnvironmentId, 
     readiness: readinessScore(organs, checkedInToday),
     checkedInToday,
     now,
+    forceBlackout: options.forceBlackout,
   })
 }
 

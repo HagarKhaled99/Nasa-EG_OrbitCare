@@ -10,6 +10,7 @@ import { DATA_LABEL, computeTwinSnapshot, crewOverview } from '@/lib/orbit/twin'
  *
  *   GET /api/twin               → YOUR twin, in your mission's environment
  *   GET /api/twin?env=iss       → your twin as if you were on the ISS
+ *   GET /api/twin?blackout=1    → demo: the Mars solar-conjunction blackout starts today
  *   GET /api/twin?crew=1        → status of the whole crew (crew medical officer only)
  *
  * Asking for anyone else's twin (?astronaut=other) returns 403. Nobody can read
@@ -42,7 +43,8 @@ export function GET(request: NextRequest) {
     return NextResponse.json({ dataLabel: DATA_LABEL, env: envId, crew }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
-  return NextResponse.json(computeTwinSnapshot(astronautFromProfile(me), envId), {
+  const forceBlackout = params.get('blackout') === '1'
+  return NextResponse.json(computeTwinSnapshot(astronautFromProfile(me), envId, undefined, { forceBlackout }), {
     headers: { 'Cache-Control': 'no-store' },
   })
 }
