@@ -19,6 +19,8 @@ export function CrewPulse() {
   const targetFirst = target.name.split(' ')[0]
   const myVote = myVoteFor(target.id)
   const [saving, setSaving] = useState(false)
+  // "Change answer" reopens the two buttons (with the current answer marked) instead of silently flipping it.
+  const [changing, setChanging] = useState(false)
   const flags = votes.filter((v) => !v.seemsLikeThemselves).length
   const brain = organs.find((o) => o.organ.id === 'brain')
   const selfMood = indicators.mood.value
@@ -28,6 +30,7 @@ export function CrewPulse() {
     setSaving(true)
     await castVote(target.id, seems)
     setSaving(false)
+    setChanging(false)
   }
 
   return (
@@ -52,16 +55,42 @@ export function CrewPulse() {
               Does {targetFirst} seem like their usual self today?
             </h2>
           </div>
-          {myVote === undefined ? (
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <Button type="button" variant="outline" className="h-14 text-base" disabled={saving} onClick={() => void answer(true)}>
-                {saving ? <Loader2 className="animate-spin" aria-hidden /> : <ThumbsUp aria-hidden />}
-                Yes, seems fine
-              </Button>
-              <Button type="button" variant="outline" className="h-14 text-base" disabled={saving} onClick={() => void answer(false)}>
-                {saving ? <Loader2 className="animate-spin" aria-hidden /> : <ThumbsDown aria-hidden />}
-                Not quite
-              </Button>
+          {myVote === undefined || changing ? (
+            <div className="mt-6">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={cn('h-14 text-base', myVote === true && 'border-primary bg-primary/10')}
+                  aria-pressed={myVote === true}
+                  disabled={saving}
+                  onClick={() => void answer(true)}
+                >
+                  {saving ? <Loader2 className="animate-spin" aria-hidden /> : <ThumbsUp aria-hidden />}
+                  Yes, seems fine
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={cn('h-14 text-base', myVote === false && 'border-primary bg-primary/10')}
+                  aria-pressed={myVote === false}
+                  disabled={saving}
+                  onClick={() => void answer(false)}
+                >
+                  {saving ? <Loader2 className="animate-spin" aria-hidden /> : <ThumbsDown aria-hidden />}
+                  Not quite
+                </Button>
+              </div>
+              {changing && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setChanging(false)}
+                  className="mt-3 text-xs font-medium text-muted-foreground underline-offset-4 hover:underline"
+                >
+                  Keep my answer
+                </button>
+              )}
             </div>
           ) : (
             <div aria-live="polite" className="mt-6 flex items-start gap-3 rounded-xl border border-status-ok/40 bg-status-ok/10 p-4 text-sm">
@@ -76,7 +105,7 @@ export function CrewPulse() {
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => void answer(!myVote)}
+                  onClick={() => setChanging(true)}
                   className="mt-2 text-xs font-medium text-primary underline-offset-4 hover:underline"
                 >
                   Change answer

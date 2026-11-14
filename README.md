@@ -8,7 +8,7 @@ check-ins into a personal health twin for each astronaut. Runs fully on one lapt
 npm install
 npm run dev            # while coding: website http://localhost:5173 + crew server :4000 (one command)
 npm run start          # for the judge demo: production build + offline service worker + crew server
-npm test               # 67 checks: server (sign-in, privacy, data) + app logic (twin, Unknown, symptoms)
+npm test               # 114 checks: server (sign-in, privacy, data) + app logic (twin, Unknown, symptoms)
 npm run build          # type-check + production build
 npm run db             # print the database (astronauts, readings, audit log). Use a 2nd terminal
 npm run data:generate  # rebuild the 31-day demo dataset (JSON + CSV + database)
@@ -42,7 +42,13 @@ All demo PINs are **2026** (`ORBIT_DEMO_PIN`, `ORBIT_GROUND_PIN`). Privacy is en
 hidden on screen: the director gets 403 on medical endpoints, ground staff cannot write astronaut data, and
 **Crew Pulse never leaves the station**. Advice and report packets travel with the mission's one-way delay
 (Mars ≈ 18 min, Moon 1.3 s, ISS 0.5 s): a message still crossing space shows when it will arrive but cannot be
-read yet. The Demo controls can skip the delay. Simplification: fitness decisions show on board immediately.
+read yet. The delay follows the environment chosen in the top bar (the server is told on every change), so packets,
+replies and the Inbox always match the screen. The Demo controls can skip the delay. Simplification: fitness
+decisions show on board immediately.
+
+**Inbox** (`/inbox`): messages from Earth, plus **Sent to Earth**, every report packet with its status (On its way →
+Delivered to Earth → Answered), send and arrival times. Handled items (read messages, answered packets) move to a
+collapsed **Earlier** list; nothing is deleted, it is the medical record.
 
 ## Judge demo script (2–3 min, plan §11)
 
@@ -145,6 +151,7 @@ Measured indicators: `heartRate`, `spo2`, `systolic`, `diastolic`, `glucose`, `t
 | `GET/POST /api/medical-reports` | Medical Report Packets queued for Earth; the CMO sees everyone's (Member 5) |
 | `GET /api/ground/crew` · `GET/POST /api/ground/messages` · `GET/POST /api/ground/fitness` | Ground portal (surgeon: medical; director: readiness only) |
 | `GET /api/inbox` · `POST /api/inbox/:id/read` · `POST /api/demo/fast-forward` | astronaut inbox; demo skip of the light delay |
+| `POST /api/environment` | `{ environmentId }` from the top bar: sets the one-way delay used for this astronaut's packets and replies |
 | `GET/POST /api/crew-pulse` | daily private question. GET returns your answers, the **count** about you and who answered, never who flagged whom (Member 5) |
 | `POST /api/astronauts/:id/reset-pin` | `{ adminPin, newPin }`: forgotten PIN (stored PINs cannot be read). Also lifts a lockout |
 | `GET /api/readings?astronautId=` | your own readings (crew medical officer: anyone's). 401 / 403 otherwise |
@@ -266,7 +273,10 @@ and mood reminders now use real data. The Future Slider uses `recharts` (run `np
 | Blood sugar, grip, vision only on the tablet | Stored in the database |
 | Fixed streak; Crew Pulse teammate always Sara | Streak counted from real check-ins for signed-up astronauts; Crew Pulse teammate chosen per person |
 | No sign-out on phones | Sign-out button in the top bar on small screens |
-| Tests only on one laptop | `npm test` (109 checks) |
+| Tests only on one laptop | `npm test` (114 checks) |
+| Inbox showed nothing after sending a packet | **Sent to Earth** list with status and times; handled items fold into **Earlier** |
+| Top bar said ISS 0.5 s but packets took 18 min (Mars) | The server uses the environment chosen in the top bar |
+| Crew Pulse "Change answer" silently flipped the answer | It reopens both buttons with the current answer marked, plus "Keep my answer" |
 
 ## Validation: do the alerts come at the right time? (`/validation`)
 Open **http://localhost:5173/validation** (no sign-in; link on the sign-in page). Code: `src/lib/orbit/validation.ts`.

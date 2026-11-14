@@ -52,6 +52,7 @@ import {
   fetchReports,
   queueReport,
   sendCrewPulseVote,
+  sendEnvironment,
   type CrewPulseDay,
   type MedicalReport,
 } from '@/lib/orbit/api/actions-api'
@@ -386,6 +387,23 @@ export function OrbitProvider({ children }: { children: React.ReactNode }) {
     return () => window.clearInterval(timer)
   }, [session, refreshInbox])
   const unreadAdvice = inbox?.messages.filter((m) => m.arrived && !m.read_at).length ?? 0
+
+  // Tell the crew server which environment the top bar shows, so report packets, replies from Earth and the
+  // Inbox all use the same light delay as the screen (ISS 0.5 s, Mars 18 min …). Crew sessions only.
+  useEffect(() => {
+    if (!session) return
+    let cancelled = false
+    sendEnvironment(envId)
+      .then(() => {
+        if (!cancelled) void refreshInbox()
+      })
+      .catch(() => {
+        /* offline or not a crew session: the server keeps the mission's delay */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session, envId, refreshInbox])
 
   // ---------- Member 5: Crew Pulse + report packets from the server ----------
   const [pulse, setPulse] = useState<CrewPulseDay | null>(null)

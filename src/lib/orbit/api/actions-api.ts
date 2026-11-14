@@ -67,7 +67,13 @@ export interface MedicalReport {
   report: { text: string; [key: string]: unknown }
   status: 'queued' | string
   created_at: string
+  /** When the packet reaches Earth (sent + one-way delay). Missing on very old rows: treat as arrived. */
+  arrives_at?: string | null
 }
+
+/** The environment chosen in the top bar; the server uses its one-way delay for packets and replies. */
+export const sendEnvironment = (environmentId: string) =>
+  call<{ ok: true; delaySeconds: number }>('POST', '/environment', { environmentId })
 
 export const fetchReports = () => call<MedicalReport[]>('GET', '/medical-reports')
 export const queueReport = (report: MedicalReport['report']) => call<MedicalReport>('POST', '/medical-reports', { report })

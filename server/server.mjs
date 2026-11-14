@@ -27,6 +27,7 @@
 //   POST   /api/ground/fitness          → surgeon: { astronautId, status, restrictions, medicalNote }
 //   GET    /api/inbox                   → astronaut: advice from Earth (arrived / in transit) + fitness for duty
 //   POST   /api/inbox/:id/read          → astronaut: mark advice as read
+//   POST   /api/environment             → astronaut: { environmentId } from the top bar; sets the light delay used
 //   POST   /api/demo/fast-forward       → demo: deliver everything still in transit now
 //
 //   POST   /api/demo/reset              → rehearsal helper: deletes YOUR check-ins, injected demo readings,
@@ -72,7 +73,14 @@ const GROUND_STAFF = [
 const GROUND_PIN = process.env.ORBIT_GROUND_PIN ?? '2026'
 /** Mission → environment → one-way light delay in seconds (same values as src/lib/orbit/environments.ts). */
 const MISSION_ENV = { 'ares-iv': 'mars-transit', artemis: 'moon-base', iss: 'iss' }
-const ENV_DELAY_SECONDS = { 'mars-transit': 18 * 60, 'moon-base': 1.3, iss: 0.5 }
+const ENV_DELAY_SECONDS = {
+  iss: 0.5,
+  'lunar-orbit': 1.3,
+  'moon-base': 1.3,
+  'mars-transit': 18 * 60,
+  'mars-base': 12 * 60,
+  'mars-rover': 12 * 60,
+}
 const FITNESS = ['ready', 'limited', 'not-ready']
 const SAMPLE_CREW_IDS = SAMPLE_CREW.map((c) => c.id)
 const DEMO_PIN = process.env.ORBIT_DEMO_PIN ?? '2026'
@@ -290,8 +298,13 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
       : null
   }
 
-  /** One-way delay to this astronaut, from their mission (sample crew fly ARES-IV, Mars transit). */
+  /** Environment chosen in the astronaut's top bar (demo), so packets and replies use the delay shown on screen. */
+  const chosenEnv = new Map()
+
+  /** One-way delay to this astronaut: the environment in their top bar, else their mission (sample crew: Mars). */
   function delaySecondsFor(astronautId) {
+    const chosen = chosenEnv.get(astronautId)
+    if (chosen) return ENV_DELAY_SECONDS[chosen]
     const row = q.get.get(astronautId)
     const missionId = row ? row.mission_id : 'ares-iv'
     return ENV_DELAY_SECONDS[MISSION_ENV[missionId] ?? 'mars-transit'] ?? 0
@@ -684,6 +697,14 @@ export function createApi(db = openDatabase(), { dbPath = DB_PATH } = {}) {
       const fitness =
         db.prepare('SELECT * FROM fitness_decisions WHERE astronaut_id = ? ORDER BY decided_at DESC LIMIT 1').get(me.astronautId) ?? null
       return { status: 200, body: { delaySeconds: delaySecondsFor(me.astronautId), messages, fitness } }
+    },
+
+    'POST /api/environment': ({ req, body }) => {
+      const me = requireCrew(req)
+      const env = body?.environmentId
+      if (!Object.hasOwn(ENV_DELAY_SECONDS, env)) throw new HttpError(400, `environmentId: one of ${Object.keys(ENV_DELAY_SECONDS).join(', ')}`)
+      chosenEnv.set(me.astronautId, env)
+      return { status: 200, body: { ok: true, delaySeconds: ENV_DELAY_SECONDS[env] } }
     },
 
     'POST /api/inbox/:id/read': ({ req, params }) => {

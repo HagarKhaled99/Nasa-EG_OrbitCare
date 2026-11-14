@@ -193,6 +193,18 @@ export async function run(t) {
   r = await surgeon('POST', '/api/demo/reset')
   t('ground staff cannot use the astronaut demo reset', r.s === 403, r)
 
+  // ---------- top-bar environment sets the light delay ----------
+  r = await sara('POST', '/api/environment', { environmentId: 'iss' })
+  t('astronaut switches to ISS → server delay 0.5 s', r.s === 200 && r.b.delaySeconds === 0.5, r)
+  r = await sara('GET', '/api/inbox')
+  t('inbox now reports the ISS delay', r.b.delaySeconds === 0.5, r.b.delaySeconds)
+  r = await sara('POST', '/api/environment', { environmentId: 'pluto' })
+  t('unknown environment → 400', r.s === 400, r)
+  r = await surgeon('POST', '/api/environment', { environmentId: 'iss' })
+  t('ground staff cannot set an astronaut environment', r.s === 403, r)
+  r = await sara('POST', '/api/environment', { environmentId: 'mars-transit' })
+  t('back to Mars transit → 18 min', r.b.delaySeconds === 1080, r.b)
+
   // ---------- demo reset (rehearsals) ----------
   r = await sara('POST', '/api/demo/reset')
   t('demo reset removes only my own non-demo data', r.s === 200 && r.b.removedReadings === 1, r)
