@@ -4,6 +4,10 @@ NASA Space Apps 2026 hackathon prototype. A tablet app that turns **simulated** 
 check-ins into a personal health twin for each astronaut. Runs fully on one laptop/tablet, no internet needed.
 **Not a medical device. All data is SYNTHETIC_DEMO.**
 
+> **Judges and visitors:** start with the **[Project Documentation](docs/PROJECT_DOCUMENTATION.md)**: the team, the
+> problem and our solution, technologies, NASA data sources and references. The rest of this README is the
+> developer guide.
+
 ```bash
 npm install
 npm run dev            # while coding: website http://localhost:5173 + crew server :4000 (one command)
