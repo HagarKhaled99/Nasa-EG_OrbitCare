@@ -658,7 +658,8 @@ export function buildTwinSnapshot(input: TwinInputs): TwinSnapshot {
       : `Earth can't be reliably reached for ${blackout.daysUntilRestored} days. Your twin keeps watching and queues your reports until contact returns.`
     : counts.act + counts.watch > 0
       ? deep
-        ? `Earth is ${delay} away, so your first contact is the ${routing.contact.toLowerCase()}.`
+        ? // Lower-case only the first letter: "Earth" in the contact name stays a proper noun.
+          `Earth is ${delay} away, so your first contact is the ${routing.contact.charAt(0).toLowerCase()}${routing.contact.slice(1)}.`
         : `You have near real-time contact with Earth. Next step: ${routing.title.toLowerCase()}.`
       : counts.unknown > 0
         ? 'Missing readings are marked Unknown, never Normal. Measure again to complete your twin.'

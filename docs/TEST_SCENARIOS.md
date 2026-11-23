@@ -107,7 +107,7 @@ Starting state of the demo crew (Mars transit, mission day 214):
 | ID | Steps | Expected result |
 |---|---|---|
 | G1 | Omar with an Act alert, top bar → **ISS** | Earth delay 0.5 s. Contact becomes “Flight surgeon (live)”. Status stays **Act**. |
-| G2 | Back to **Mars transit** | Delay 18 min; contact “Crew medical officer + Earth (report packet)”. Status still **Act**. |
+| G2 | Back to **Mars transit** | Delay 18 min; contact “Crew medical officer, then Earth (report packet)”. Status still **Act**. |
 | G3 | Twin View on Mars, comms panel | “Blackout coming · Blackout in 6 days” (day 220–234). |
 | G4 | **Demo: start the blackout now** | “No reliable contact with Earth · back in 14 days”; the help chain stays on board. |
 | G5 | Switch to ISS and press the blackout demo | No blackout on the ISS (“Earth is in contact”). |

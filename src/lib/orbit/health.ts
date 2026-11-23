@@ -366,7 +366,7 @@ export function getRouting(status: Status, env: MissionEnvironment): Routing {
         title: 'Follow onboard protocol now',
         detail:
           'Act immediately with the crew medical officer. A Medical Report Packet is generated and sent to Earth so the flight surgeons can follow up.',
-        contact: 'Crew medical officer + Earth (report packet)',
+        contact: 'Crew medical officer, then Earth (report packet)',
       }
     : {
         title: 'Contact ground immediately',
