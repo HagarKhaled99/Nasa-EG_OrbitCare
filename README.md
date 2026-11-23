@@ -27,6 +27,21 @@ shown on the sign-in screen. Change it with `ORBIT_DEMO_PIN` if the team prefers
 
 Manual test scenarios with expected results: [`docs/TEST_SCENARIOS.md`](docs/TEST_SCENARIOS.md).
 
+## Online demo link (Hugging Face Spaces, free, no card)
+
+The Space holds only one file, [`deploy/huggingface/Dockerfile`](deploy/huggingface/Dockerfile): it downloads
+this GitHub repository, builds it and serves it on port 7860 with `npm run serve`. No git push to Hugging Face.
+
+1. At [huggingface.co/new-space](https://huggingface.co/new-space): name `orbit-twin`, SDK **Docker**, template
+   **Blank**, hardware **CPU basic (free)**, **Public** → Create Space.
+2. In the Space: **Files → + Add file → Create a new file**, name it `Dockerfile`, paste the content of
+   `deploy/huggingface/Dockerfile`, **Commit**. The build starts by itself (about 3–5 min).
+3. Share the direct link `https://<your-username>-orbit-twin.hf.space`. The app also works on the Space page.
+4. After pushing new code to GitHub: Space **Settings → Factory rebuild** to pick it up.
+
+Free notes: the Space sleeps after ~48 h without visitors and wakes on the next visit; the database restarts
+from the SYNTHETIC_DEMO dataset on every restart or rebuild.
+
 ## Online demo link (Render, free)
 
 The app can also run online so anyone can open it from a link, with no install. `npm run serve` serves the built

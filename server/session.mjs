@@ -67,11 +67,20 @@ export function readCookie(req, name = SESSION_COOKIE) {
   return null
 }
 
+/**
+ * SameSite=Lax by default. ORBIT_COOKIE_SAMESITE=None lets sign-in work when the app is shown inside another
+ * site's frame (the Hugging Face Space page); browsers only accept SameSite=None together with Secure.
+ */
+function cookieFlags() {
+  const none = (process.env.ORBIT_COOKIE_SAMESITE ?? '').toLowerCase() === 'none'
+  const secure = none || process.env.NODE_ENV === 'production'
+  return `HttpOnly; SameSite=${none ? 'None' : 'Lax'}; Path=/${secure ? '; Secure' : ''}`
+}
+
 export function sessionCookie(token) {
-  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
-  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_SECONDS}${secure}`
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; ${cookieFlags()}; Max-Age=${SESSION_TTL_SECONDS}`
 }
 
 export function clearedSessionCookie() {
-  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`
+  return `${SESSION_COOKIE}=; ${cookieFlags()}; Max-Age=0`
 }
