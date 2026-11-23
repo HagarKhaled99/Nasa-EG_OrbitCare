@@ -27,6 +27,20 @@ shown on the sign-in screen. Change it with `ORBIT_DEMO_PIN` if the team prefers
 
 Manual test scenarios with expected results: [`docs/TEST_SCENARIOS.md`](docs/TEST_SCENARIOS.md).
 
+## Online demo link (Render, free)
+
+The app can also run online so anyone can open it from a link, with no install. `npm run serve` serves the built
+website and the crew API from one process on `PORT`; `render.yaml` tells Render how to build and start it.
+
+1. Sign in at [render.com](https://render.com) with GitHub → **New → Blueprint** → pick this repository → **Apply**.
+2. Wait for the first build (about 3–5 min). The link looks like `https://orbit-twin-xxxx.onrender.com`.
+
+Free-plan notes: after 15 min without visitors the service sleeps, so the first visit can take about a minute. The
+database is not permanent: every restart or new deploy starts again from the SYNTHETIC_DEMO dataset (handy for
+demos). Demo PINs are public on the sign-in page, so treat the online copy as a shared demo.
+
+Test the same setup locally: `npm run build` then `npm run serve` → http://localhost:4000
+
 ## Users and the two portals
 
 ORBIT TWIN has two portals with the same crew server and database. Onboard decisions stay on board (the plan's
